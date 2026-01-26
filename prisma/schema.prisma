@@ -1,0 +1,293 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// User & Authentication
+// ============================================
+
+model User {
+  id            String        @id @default(cuid())
+  name          String
+  email         String        @unique
+  password      String
+  handicap      Decimal?      @db.Decimal(4, 1) // e.g., 12.5
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  players       Player[]      // Players this user has added to their account
+  rounds        Round[]       // Rounds created by this user
+  roundPlayers  RoundPlayer[] // Rounds this user has played in
+}
+
+// ============================================
+// Player Management (friends/opponents)
+// ============================================
+
+model Player {
+  id            String        @id @default(cuid())
+  name          String
+  handicap      Decimal?      @db.Decimal(4, 1)
+  email         String?       // Optional, for inviting
+  phone         String?
+  createdBy     User          @relation(fields: [createdById], references: [id])
+  createdById   String
+  linkedUser    String?       // If this player has a user account, link it
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  roundPlayers      RoundPlayer[]
+  h2hAsPlayer1      HeadToHeadRecord[] @relation("H2HPlayer1")
+  h2hAsPlayer2      HeadToHeadRecord[] @relation("H2HPlayer2")
+  settlementsFrom   Settlement[] @relation("SettlementFrom")
+  settlementsTo     Settlement[] @relation("SettlementTo")
+
+  @@unique([createdById, name])
+}
+
+// ============================================
+// Course Management
+// ============================================
+
+model Course {
+  id            String        @id @default(cuid())
+  name          String
+  city          String?
+  state         String?
+  country       String        @default("USA")
+  slope         Int?          // Course slope rating
+  rating        Decimal?      @db.Decimal(4, 1) // Course rating
+  createdBy     String        // User who added this course
+  isPublic      Boolean       @default(false) // Community shared
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  holes         Hole[]
+  rounds        Round[]
+
+  @@unique([name, city, state])
+}
+
+model Hole {
+  id            String        @id @default(cuid())
+  course        Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId      String
+  holeNumber    Int           // 1-18
+  par           Int           // 3, 4, or 5
+  handicap      Int           // 1-18 (stroke index)
+  yardage       Int?
+
+  @@unique([courseId, holeNumber])
+}
+
+// ============================================
+// Round & Scoring
+// ============================================
+
+enum HandicapMode {
+  GROUP_LOWEST    // Everyone plays off lowest handicap in group
+  MATCH_LOWEST    // Each match plays off lowest between those two
+}
+
+enum RoundStatus {
+  SETUP           // Setting up the round
+  IN_PROGRESS     // Currently playing
+  COMPLETED       // Round finished
+  CANCELLED
+}
+
+model Round {
+  id              String        @id @default(cuid())
+  createdBy       User          @relation(fields: [createdById], references: [id])
+  createdById     String
+  course          Course        @relation(fields: [courseId], references: [id])
+  courseId        String
+  date            DateTime      @default(now())
+  status          RoundStatus   @default(SETUP)
+
+  // Nassau settings
+  betAmount       Decimal       @db.Decimal(10, 2) @default(5.00)
+  handicapMode    HandicapMode  @default(GROUP_LOWEST)
+  autoPressAt2    Boolean       @default(false)
+
+  // Tracking
+  currentHole     Int           @default(1)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  players         RoundPlayer[]
+  matches         Match[]
+  settlements     Settlement[]
+}
+
+model RoundPlayer {
+  id              String        @id @default(cuid())
+  round           Round         @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  roundId         String
+
+  // Can be a User or a Player
+  user            User?         @relation(fields: [userId], references: [id])
+  userId          String?
+  player          Player?       @relation(fields: [playerId], references: [id])
+  playerId        String?
+
+  // Handicap at time of round (snapshot)
+  handicap        Decimal       @db.Decimal(4, 1)
+  playerName      String        // Denormalized for easy display
+
+  // Calculated strokes given (based on mode)
+  strokesGiven    Int           @default(0)
+
+  // Relations
+  scores          HoleScore[]
+  matchesAsPlayer1 Match[]      @relation("MatchPlayer1")
+  matchesAsPlayer2 Match[]      @relation("MatchPlayer2")
+
+  @@unique([roundId, userId])
+  @@unique([roundId, playerId])
+}
+
+model HoleScore {
+  id              String        @id @default(cuid())
+  roundPlayer     RoundPlayer   @relation(fields: [roundPlayerId], references: [id], onDelete: Cascade)
+  roundPlayerId   String
+  holeNumber      Int           // 1-18
+  grossStrokes    Int           // Actual strokes taken
+  netStrokes      Int           // Strokes after handicap adjustment
+  strokesReceived Int           @default(0) // Handicap strokes received on this hole
+
+  @@unique([roundPlayerId, holeNumber])
+}
+
+// ============================================
+// Match Play (Nassau)
+// ============================================
+
+enum MatchSegment {
+  FRONT_9
+  BACK_9
+  OVERALL_18
+}
+
+model Match {
+  id              String        @id @default(cuid())
+  round           Round         @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  roundId         String
+
+  // The two players in this match
+  player1         RoundPlayer   @relation("MatchPlayer1", fields: [player1Id], references: [id])
+  player1Id       String
+  player2         RoundPlayer   @relation("MatchPlayer2", fields: [player2Id], references: [id])
+  player2Id       String
+
+  // Handicap strokes player2 gives to player1 (can be negative)
+  strokeDifference Int          @default(0)
+
+  createdAt       DateTime      @default(now())
+
+  // Relations
+  results         MatchResult[]
+  presses         Press[]
+  settlements     Settlement[]
+
+  @@unique([roundId, player1Id, player2Id])
+}
+
+model MatchResult {
+  id              String        @id @default(cuid())
+  match           Match         @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  matchId         String
+  segment         MatchSegment
+
+  // Match status for this segment
+  player1Status   Int           @default(0) // Positive = up, negative = down, 0 = all square
+  holesPlayed     Int           @default(0)
+  holesRemaining  Int           @default(9)
+  isComplete      Boolean       @default(false)
+  isClosed        Boolean       @default(false) // Match ended before all holes played
+
+  // Winner (null if tied or incomplete)
+  winnerId        String?       // RoundPlayer id
+
+  @@unique([matchId, segment])
+}
+
+model Press {
+  id              String        @id @default(cuid())
+  match           Match         @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  matchId         String
+  segment         MatchSegment  // Which segment this press is in
+  startHole       Int           // Hole where press started
+  triggeredById   String        // RoundPlayer id who was 2-down
+
+  // Press status
+  player1Status   Int           @default(0)
+  holesPlayed     Int           @default(0)
+  holesRemaining  Int           @default(0)
+  isComplete      Boolean       @default(false)
+  isClosed        Boolean       @default(false)
+  winnerId        String?
+
+  // A press can have its own press (press the press)
+  parentPressId   String?
+  parentPress     Press?        @relation("PressChain", fields: [parentPressId], references: [id])
+  childPresses    Press[]       @relation("PressChain")
+
+  createdAt       DateTime      @default(now())
+}
+
+// ============================================
+// Lifetime Records
+// ============================================
+
+model HeadToHeadRecord {
+  id              String        @id @default(cuid())
+
+  // Always store with lower ID first for consistency
+  player1         Player        @relation("H2HPlayer1", fields: [player1Id], references: [id])
+  player1Id       String
+  player2         Player        @relation("H2HPlayer2", fields: [player2Id], references: [id])
+  player2Id       String
+
+  // Overall record
+  player1Wins     Int           @default(0)
+  player2Wins     Int           @default(0)
+  ties            Int           @default(0)
+
+  // Money tracking
+  player1NetWinnings Decimal    @db.Decimal(10, 2) @default(0)
+  player2NetWinnings Decimal    @db.Decimal(10, 2) @default(0)
+
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([player1Id, player2Id])
+}
+
+// ============================================
+// Settlement Tracking
+// ============================================
+
+model Settlement {
+  id              String        @id @default(cuid())
+  round           Round         @relation(fields: [roundId], references: [id])
+  roundId         String
+  match           Match?        @relation(fields: [matchId], references: [id])
+  matchId         String?
+  fromPlayer      Player        @relation("SettlementFrom", fields: [fromPlayerId], references: [id])
+  fromPlayerId    String
+  toPlayer        Player        @relation("SettlementTo", fields: [toPlayerId], references: [id])
+  toPlayerId      String
+  amount          Decimal       @db.Decimal(10, 2)
+  isPaid          Boolean       @default(false)
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+}
