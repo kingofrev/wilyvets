@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -108,9 +109,12 @@ export default function EnterMajorsPage() {
               <Check className="h-7 w-7 text-green-600" />
             </div>
             <h3 className="text-xl font-bold mb-1">You&apos;re in!</h3>
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-sm mb-4">
               Good luck at {tournament.name}. $10 buy-in to {name?.split(" ")[0] ?? "the organiser"}.
             </p>
+            <Link href={`/majors/${params.id}/leaderboard`}>
+              <Button variant="outline" size="sm">View Leaderboard</Button>
+            </Link>
           </CardContent>
         </Card>
       </div>

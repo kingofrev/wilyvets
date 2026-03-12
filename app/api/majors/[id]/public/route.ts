@@ -7,13 +7,18 @@ export async function GET(request: Request, { params }: { params: { id: string }
     where: { id: params.id },
     include: {
       golfers: { orderBy: [{ tier: "asc" }, { odds: "asc" }] },
-      _count: { select: { entries: true } },
+      entries: {
+        include: {
+          picks: { include: { golfer: true }, orderBy: { tier: "asc" } },
+          winnerPick: true,
+        },
+        orderBy: { createdAt: "asc" },
+      },
     },
   })
 
   if (!tournament) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-  // Don't expose entry details to the public view
   return NextResponse.json({
     tournament: {
       id: tournament.id,
@@ -22,7 +27,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
       year: tournament.year,
       status: tournament.status,
       golfers: tournament.golfers,
-      entryCount: tournament._count.entries,
+      entryCount: tournament.entries.length,
+      entries: tournament.entries,
     },
   })
 }

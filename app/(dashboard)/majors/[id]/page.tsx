@@ -240,6 +240,11 @@ export default function MajorsTournamentPage() {
               {copied ? <Check className="h-3.5 w-3.5 mr-1.5" /> : <Share2 className="h-3.5 w-3.5 mr-1.5" />}
               {copied ? "Copied!" : "Share Link"}
             </Button>
+            <Link href={`/majors/${params.id}/leaderboard`} target="_blank">
+              <Button size="sm" variant="outline">
+                Public Leaderboard
+              </Button>
+            </Link>
           </div>
 
           <div className="flex flex-wrap gap-2">
