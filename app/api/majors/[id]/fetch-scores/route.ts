@@ -64,7 +64,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   // Build ESPN URL
   const league = tournament.espnLeague || "pga"
   const eventParam = tournament.espnEventId ? `?event=${tournament.espnEventId}` : ""
-  const espnUrl = `https://site.web.api.espn.com/apis/site/v2/sports/golf/${league}/leaderboard${eventParam}`
+  const espnUrl = `https://site.api.espn.com/apis/site/v2/sports/golf/${league}/scoreboard${eventParam}`
 
   const espnRes = await fetch(espnUrl, {
     headers: { "User-Agent": "Mozilla/5.0 (compatible; WilyVets/1.0)" },
