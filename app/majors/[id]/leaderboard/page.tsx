@@ -1,13 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ChevronDown, ChevronUp, Trophy } from "lucide-react"
-import { formatScore, tierLabel } from "@/lib/games/majors"
+import { Input } from "@/components/ui/input"
+import { ChevronDown, ChevronUp, Trophy, Send } from "lucide-react"
+import { formatScore } from "@/lib/games/majors"
 
 interface Golfer {
   id: string
@@ -47,6 +48,13 @@ interface Tournament {
   entryCount: number
 }
 
+interface Message {
+  id: string
+  authorName: string
+  body: string
+  createdAt: string
+}
+
 const STATUS_LABEL: Record<string, string> = {
   UPCOMING: "Picks Open",
   IN_PROGRESS: "In Progress",
@@ -60,11 +68,24 @@ function ScoreCell({ score }: { score: number | null }) {
   return <span className={cls}>{formatScore(score)}</span>
 }
 
+function formatTime(iso: string) {
+  const d = new Date(iso)
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+}
+
 export default function PublicLeaderboardPage() {
   const params = useParams()
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [loading, setLoading] = useState(true)
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
+
+  // Chat state
+  const [messages, setMessages] = useState<Message[]>([])
+  const [chatName, setChatName] = useState("")
+  const [chatInput, setChatInput] = useState("")
+  const [sending, setSending] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const lastMessageIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     fetch(`/api/majors/${params.id}/public`)
@@ -72,6 +93,58 @@ export default function PublicLeaderboardPage() {
       .then((d) => setTournament(d.tournament))
       .finally(() => setLoading(false))
   }, [params.id])
+
+  // Load saved name from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("majors-chat-name")
+    if (saved) setChatName(saved)
+  }, [])
+
+  // Initial message load
+  useEffect(() => {
+    fetchMessages()
+  }, [params.id])
+
+  // Poll for new messages every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(fetchMessages, 10000)
+    return () => clearInterval(interval)
+  }, [params.id])
+
+  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
+
+  async function fetchMessages() {
+    const res = await fetch(`/api/majors/${params.id}/messages`)
+    if (!res.ok) return
+    const data = await res.json()
+    setMessages(data.messages)
+    if (data.messages.length > 0) {
+      lastMessageIdRef.current = data.messages[data.messages.length - 1].id
+    }
+  }
+
+  async function sendMessage(e: React.FormEvent) {
+    e.preventDefault()
+    if (!chatInput.trim() || !chatName.trim()) return
+    setSending(true)
+    try {
+      localStorage.setItem("majors-chat-name", chatName.trim())
+      const res = await fetch(`/api/majors/${params.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ authorName: chatName.trim(), body: chatInput.trim() }),
+      })
+      if (res.ok) {
+        setChatInput("")
+        await fetchMessages()
+      }
+    } finally {
+      setSending(false)
+    }
+  }
 
   if (loading) return <p className="text-muted-foreground text-sm py-8 text-center">Loading...</p>
   if (!tournament) return <p className="text-destructive py-8 text-center">Tournament not found.</p>
@@ -207,9 +280,7 @@ export default function PublicLeaderboardPage() {
                                 key={pick.tier}
                                 className={`border-b last:border-0 ${pick.isDropped ? "opacity-40" : ""}`}
                               >
-                                <td className="px-3 py-1.5 text-muted-foreground">
-                                  T{pick.tier}
-                                </td>
+                                <td className="px-3 py-1.5 text-muted-foreground">T{pick.tier}</td>
                                 <td className="px-3 py-1.5">
                                   {pick.golfer.name}
                                   {pick.isDropped && (
@@ -235,6 +306,55 @@ export default function PublicLeaderboardPage() {
             })
           )}
         </div>
+
+        {/* Chat */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Chat</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 p-3">
+            {/* Messages */}
+            <div className="h-64 overflow-y-auto space-y-2 pr-1">
+              {messages.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center pt-8">
+                  No messages yet. Say something!
+                </p>
+              ) : (
+                messages.map((msg) => (
+                  <div key={msg.id} className="text-sm">
+                    <span className="font-medium">{msg.authorName}</span>
+                    <span className="text-muted-foreground text-xs ml-1.5">{formatTime(msg.createdAt)}</span>
+                    <p className="text-foreground/90 mt-0.5">{msg.body}</p>
+                  </div>
+                ))
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input */}
+            <form onSubmit={sendMessage} className="space-y-2">
+              <Input
+                placeholder="Your name"
+                value={chatName}
+                onChange={(e) => setChatName(e.target.value)}
+                maxLength={50}
+                className="text-sm"
+              />
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Say something..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  maxLength={500}
+                  className="text-sm"
+                />
+                <Button type="submit" size="icon" disabled={sending || !chatInput.trim() || !chatName.trim()}>
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
 
         <div className="text-center">
           <Link href={`/majors/${params.id}/enter`}>
