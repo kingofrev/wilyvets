@@ -6,12 +6,10 @@ import { recalculateStandings } from "@/lib/majors-standings"
 
 interface ESPNCompetitor {
   id: string
+  order?: number
   athlete?: { id: string; displayName: string }
-  status?: {
-    type?: { name?: string }
-  }
-  score?: { displayValue?: string }
-  linescores?: { value?: number; displayValue?: string }[]
+  score?: string
+  linescores?: { displayValue?: string }[]
   statistics?: { name: string; displayValue: string }[]
 }
 
@@ -25,12 +23,6 @@ function parseScore(val: string | number | undefined | null): number | null {
   return isNaN(n) ? null : n
 }
 
-function parseTotalScore(displayValue: string | undefined): number | null {
-  if (!displayValue) return null
-  if (displayValue === "E") return 0
-  const n = parseInt(displayValue)
-  return isNaN(n) ? null : n
-}
 
 function extractCompetitors(data: unknown): ESPNCompetitor[] {
   try {
@@ -104,20 +96,20 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     if (!comp) continue
 
-    const statusName = comp.status?.type?.name ?? ""
-    const isCut = statusName.includes("CUT") || statusName.toLowerCase().includes("cut")
-    const isWithdrawn = statusName.includes("WD") || statusName.toLowerCase().includes("withdrawn")
-
-    // linescores: individual round scores relative to par
+    // linescores: individual round scores to par (use displayValue, not value)
     const ls = comp.linescores ?? []
-    const r1 = parseScore(ls[0]?.value ?? ls[0]?.displayValue)
-    const r2 = parseScore(ls[1]?.value ?? ls[1]?.displayValue)
-    const r3 = parseScore(ls[2]?.value ?? ls[2]?.displayValue)
-    const r4 = parseScore(ls[3]?.value ?? ls[3]?.displayValue)
-    const totalScore = parseTotalScore(comp.score?.displayValue)
+    const r1 = parseScore(ls[0]?.displayValue)
+    const r2 = parseScore(ls[1]?.displayValue)
+    const r3 = parseScore(ls[2]?.displayValue)
+    const r4 = parseScore(ls[3]?.displayValue)
+    // comp.score is a string like "-4", "E", "+2"
+    const totalScore = parseScore(comp.score)
 
-    const positionStat = comp.statistics?.find((s) => s.name === "position" || s.name === "rank")
-    let position: string | null = positionStat?.displayValue ?? null
+    // Position from leaderboard order; CUT/WD detection via score string
+    const scoreStr = (comp.score ?? "").toUpperCase()
+    const isCut = scoreStr === "CUT"
+    const isWithdrawn = scoreStr === "WD"
+    let position: string | null = comp.order != null ? String(comp.order) : null
     if (isCut) position = "CUT"
     if (isWithdrawn) position = "WD"
 
