@@ -33,10 +33,10 @@ export async function POST(
         matches: {
           include: {
             player1: {
-              include: { player: true },
+              include: { player: true, scores: true },
             },
             player2: {
-              include: { player: true },
+              include: { player: true, scores: true },
             },
             results: true,
             presses: true,

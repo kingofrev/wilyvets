@@ -1,5 +1,5 @@
 {
-  "name": "nassau",
+  "name": "wilyvets",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
+    "@netlify/plugin-nextjs": "^5.15.9",
     "@prisma/client": "^5.10.0",
     "@radix-ui/react-alert-dialog": "^1.0.5",
     "@radix-ui/react-avatar": "^1.0.4",

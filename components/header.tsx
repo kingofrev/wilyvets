@@ -24,7 +24,7 @@ export function Header({ user }: HeaderProps) {
       <div className="container mx-auto flex h-14 items-center justify-between px-4 max-w-lg">
         <div className="flex items-center gap-2">
           <span className="text-xl">⛳</span>
-          <h1 className="text-lg font-bold text-primary">Nassau</h1>
+          <h1 className="text-lg font-bold text-primary">WilyVets</h1>
         </div>
 
         <div className="flex items-center gap-2">

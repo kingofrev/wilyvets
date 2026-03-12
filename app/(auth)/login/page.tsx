@@ -60,7 +60,7 @@ export default function LoginPage() {
               <span className="text-2xl">⛳</span>
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">Nassau</CardTitle>
+          <CardTitle className="text-2xl font-bold">WilyVets</CardTitle>
           <CardDescription>
             Sign in to track your golf bets
           </CardDescription>

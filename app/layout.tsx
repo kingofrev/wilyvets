@@ -7,8 +7,8 @@ import { AuthProvider } from "@/components/auth-provider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Nassau - Golf Betting Tracker",
-  description: "Track Nassau golf bets, matches, and settlements with your foursome",
+  title: "WilyVets - Golf Betting Tracker",
+  description: "Track golf bets, matches, and settlements with your foursome",
   manifest: "/manifest.json",
 };
 

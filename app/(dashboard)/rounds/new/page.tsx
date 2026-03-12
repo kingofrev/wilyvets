@@ -45,6 +45,8 @@ export default function NewRoundPage() {
   const [betAmount, setBetAmount] = useState("5");
   const [handicapMode, setHandicapMode] = useState("GROUP_LOWEST");
   const [autoPressAt2, setAutoPressAt2] = useState(false);
+  const [ninesEnabled, setNinesEnabled] = useState(false);
+  const [ninesPointValue, setNinesPointValue] = useState("1");
 
   useEffect(() => {
     Promise.all([
@@ -103,6 +105,8 @@ export default function NewRoundPage() {
           betAmount,
           handicapMode,
           autoPressAt2,
+          ninesEnabled: (selectedPlayers.length === 3 || selectedPlayers.length === 4) ? ninesEnabled : false,
+          ninesPointValue: ninesPointValue,
           players: selectedPlayers,
         }),
       });
@@ -299,6 +303,56 @@ export default function NewRoundPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* 9s Game Settings - Show for 3 or 4 players */}
+      {(selectedPlayers.length === 3 || selectedPlayers.length === 4) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>9s Game</span>
+              <Switch checked={ninesEnabled} onCheckedChange={setNinesEnabled} />
+            </CardTitle>
+            <CardDescription>
+              9 points per hole based on net scores with carryovers
+            </CardDescription>
+          </CardHeader>
+          {ninesEnabled && (
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Point Value</Label>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">$</span>
+                  <Input
+                    type="number"
+                    step="0.25"
+                    value={ninesPointValue}
+                    onChange={(e) => setNinesPointValue(e.target.value)}
+                    className="w-24"
+                  />
+                  <span className="text-sm text-muted-foreground">per point</span>
+                </div>
+              </div>
+              <div className="text-sm text-muted-foreground space-y-1">
+                <p><strong>Point distribution per hole:</strong></p>
+                {selectedPlayers.length === 3 ? (
+                  <>
+                    <p>• All different: Low 5, Mid 3, High 1</p>
+                    <p>• 2 tie low: Both 4, High 1</p>
+                    <p>• 2 tie high: Low 5, Both 2</p>
+                    <p>• All tie: Carryover to next hole</p>
+                  </>
+                ) : (
+                  <>
+                    <p>• All different: 1st 5, 2nd 3, 3rd 1, 4th 0</p>
+                    <p>• 2 tie for 3rd: Both get 1</p>
+                    <p>• All tie: Carryover to next hole</p>
+                  </>
+                )}
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      )}
 
       {/* Start Button */}
       <Button

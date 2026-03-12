@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Trophy, ArrowRight, Check } from "lucide-react";
 import Link from "next/link";
-import { cn, formatMatchStatus, formatCurrency } from "@/lib/utils";
+import { cn, formatMatchStatus, formatCurrency, getStrokesOnHole, calculateCourseHandicap } from "@/lib/utils";
 import { calculateMatchState, calculateSettlement, type HoleResult } from "@/lib/games/nassau";
+import { calculateNinesState, calculateNinesSettlement, type NinesSettlement } from "@/lib/games/nines";
 
 interface Player {
   id: string;
@@ -64,9 +65,13 @@ interface Round {
   betAmount: string;
   handicapMode: string;
   autoPressAt2: boolean;
+  ninesEnabled: boolean;
+  ninesPointValue: string;
   course: {
     id: string;
     name: string;
+    slope: number | null;
+    rating: string | null;
     holes: Hole[];
   };
   players: RoundPlayer[];
@@ -84,6 +89,7 @@ export default function RoundResultsPage() {
   const id = params.id as string;
   const [round, setRound] = useState<Round | null>(null);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const [ninesSettlements, setNinesSettlements] = useState<NinesSettlement[]>([]);
 
   useEffect(() => {
     fetchRound();
@@ -95,7 +101,68 @@ export default function RoundResultsPage() {
       const data = await response.json();
       setRound(data.round);
       calculateSettlements(data.round);
+      if (data.round.ninesEnabled && (data.round.players.length === 3 || data.round.players.length === 4)) {
+        calculateNines(data.round);
+      }
     }
+  }
+
+  function getPlayerCourseHandicap(roundData: Round, playerId: string): number {
+    const player = roundData.players.find(p => p.id === playerId);
+    if (!player) return 0;
+
+    const handicapIndex = parseFloat(player.handicap);
+    const coursePar = roundData.course.holes.reduce((sum, h) => sum + h.par, 0);
+    const courseRating = roundData.course.rating ? parseFloat(roundData.course.rating) : null;
+
+    return calculateCourseHandicap(handicapIndex, roundData.course.slope, courseRating, coursePar);
+  }
+
+  function getPlayerStrokesOnHoleForRound(roundData: Round, playerId: string, holeNumber: number): number {
+    const player = roundData.players.find(p => p.id === playerId);
+    if (!player) return 0;
+
+    const hole = roundData.course.holes.find(h => h.holeNumber === holeNumber);
+    if (!hole) return 0;
+
+    const playerCourseHcp = getPlayerCourseHandicap(roundData, playerId);
+    const allCourseHandicaps = roundData.players.map(p => getPlayerCourseHandicap(roundData, p.id));
+    const groupLowest = Math.min(...allCourseHandicaps);
+
+    return getStrokesOnHole(playerCourseHcp, groupLowest, hole.handicap, "GROUP_LOWEST", groupLowest);
+  }
+
+  function calculateNines(roundData: Round) {
+    const holeScores: { holeNumber: number; scores: { playerId: string; netScore: number }[] }[] = [];
+
+    for (let hole = 1; hole <= 18; hole++) {
+      const allScored = roundData.players.every(
+        (p) => p.scores.some((s) => s.holeNumber === hole)
+      );
+
+      if (allScored) {
+        holeScores.push({
+          holeNumber: hole,
+          scores: roundData.players.map((p) => {
+            const score = p.scores.find((s) => s.holeNumber === hole);
+            const grossStrokes = score?.grossStrokes || 0;
+            const strokesReceived = getPlayerStrokesOnHoleForRound(roundData, p.id, hole);
+            const netScore = grossStrokes - strokesReceived;
+            return { playerId: p.id, netScore };
+          }),
+        });
+      }
+    }
+
+    const ninesState = calculateNinesState(holeScores);
+    const pointValue = parseFloat(roundData.ninesPointValue);
+    const playerNames = roundData.players.map((p) => ({
+      playerId: p.id,
+      name: p.player.name,
+    }));
+
+    const settlements = calculateNinesSettlement(ninesState, pointValue, playerNames);
+    setNinesSettlements(settlements);
   }
 
   function calculateSettlements(roundData: Round) {
@@ -256,6 +323,49 @@ export default function RoundResultsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* 9s Game Settlement */}
+      {round.ninesEnabled && ninesSettlements.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              9s Game Results
+            </CardTitle>
+            <CardDescription>
+              ${round.ninesPointValue} per point
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {ninesSettlements
+                .sort((a, b) => b.amount - a.amount)
+                .map((settlement) => (
+                  <div
+                    key={settlement.playerId}
+                    className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                  >
+                    <div>
+                      <span className="font-medium">{settlement.playerName}</span>
+                      <p className="text-sm text-muted-foreground">
+                        {settlement.totalPoints} points (net: {settlement.netPoints >= 0 ? "+" : ""}{settlement.netPoints.toFixed(1)})
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "font-bold",
+                        settlement.amount > 0 && "text-green-600",
+                        settlement.amount < 0 && "text-red-600"
+                      )}
+                    >
+                      {settlement.amount >= 0 ? "+" : ""}{formatCurrency(Math.abs(settlement.amount))}
+                      {settlement.amount < 0 && " owes"}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Match Details */}
       <div className="space-y-3">

@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Home, Users, MapPin, Trophy, PlusCircle } from "lucide-react";
+import { Home, Users, MapPin, Trophy, PlusCircle, Award } from "lucide-react";
 
 const navigation = [
   { name: "Home", href: "/", icon: Home },
   { name: "Players", href: "/players", icon: Users },
   { name: "New", href: "/rounds/new", icon: PlusCircle },
-  { name: "Courses", href: "/courses", icon: MapPin },
+  { name: "Majors", href: "/majors", icon: Award },
   { name: "Records", href: "/records", icon: Trophy },
 ];
 

@@ -13,6 +13,7 @@ import Link from "next/link";
 import { cn, formatMatchStatus, getStrokesOnHole, calculateCourseHandicap } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { calculateNinesState, formatHolePoints, type NinesState } from "@/lib/games/nines";
 
 interface Hole {
   id: string;
@@ -69,6 +70,8 @@ interface Round {
   betAmount: string;
   handicapMode: string;
   autoPressAt2: boolean;
+  ninesEnabled: boolean;
+  ninesPointValue: string;
   course: {
     id: string;
     name: string;
@@ -236,6 +239,38 @@ export default function PlayRoundPage() {
     (p) => scores[p.id]?.[currentHole] && scores[p.id][currentHole] !== ""
   );
 
+  // Calculate 9s game state if enabled (3 or 4 players)
+  const ninesState: NinesState | null = round.ninesEnabled && (round.players.length === 3 || round.players.length === 4)
+    ? (() => {
+        const holeScores: { holeNumber: number; scores: { playerId: string; netScore: number }[] }[] = [];
+
+        for (let hole = 1; hole <= 18; hole++) {
+          // Check if all 3 players have scored this hole
+          const allScored = round.players.every(
+            (p) => p.scores.some((s) => s.holeNumber === hole)
+          );
+
+          if (allScored) {
+            const holeData = round.course.holes.find((h) => h.holeNumber === hole);
+            const holeHcp = holeData?.handicap || 18;
+
+            holeScores.push({
+              holeNumber: hole,
+              scores: round.players.map((p) => {
+                const score = p.scores.find((s) => s.holeNumber === hole);
+                const grossStrokes = score?.grossStrokes || 0;
+                const strokesReceived = getPlayerStrokesOnHole(p.id, hole);
+                const netScore = grossStrokes - strokesReceived;
+                return { playerId: p.id, netScore };
+              }),
+            });
+          }
+        }
+
+        return calculateNinesState(holeScores);
+      })()
+    : null;
+
   return (
     <div className="space-y-4 pb-20">
       {/* Header */}
@@ -259,10 +294,11 @@ export default function PlayRoundPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className={cn("grid w-full", round.ninesEnabled ? "grid-cols-4" : "grid-cols-3")}>
           <TabsTrigger value="hole">Hole</TabsTrigger>
           <TabsTrigger value="scorecard">Card</TabsTrigger>
           <TabsTrigger value="matches">Matches</TabsTrigger>
+          {round.ninesEnabled && <TabsTrigger value="nines">9s</TabsTrigger>}
         </TabsList>
 
         {/* Single Hole Entry */}
@@ -767,6 +803,180 @@ export default function PlayRoundPage() {
             View Full Results
           </Button>
         </TabsContent>
+
+        {/* 9s Game */}
+        {round.ninesEnabled && ninesState && (
+          <TabsContent value="nines" className="space-y-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">9s Game</CardTitle>
+                  <Badge variant="outline">${round.ninesPointValue}/pt</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0 overflow-x-auto">
+                {/* Front 9 */}
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="p-2 text-left font-medium sticky left-0 bg-muted/50">Hole</th>
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((hole) => (
+                        <th key={hole} className="p-2 text-center font-medium min-w-[36px]">{hole}</th>
+                      ))}
+                      <th className="p-2 text-center font-medium bg-muted">Out</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {round.players.map((player) => {
+                      const frontTotal = ninesState.holeResults
+                        .filter((h) => h.holeNumber <= 9)
+                        .reduce((sum, h) => {
+                          const pts = h.points.find((p) => p.playerId === player.id);
+                          return sum + (pts?.points || 0);
+                        }, 0);
+
+                      return (
+                        <tr key={player.id} className="border-b">
+                          <td className="p-2 font-medium sticky left-0 bg-background">
+                            {player.player.name.split(" ")[0]}
+                          </td>
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((holeNum) => {
+                            const holeResult = ninesState.holeResults.find((h) => h.holeNumber === holeNum);
+                            if (!holeResult) {
+                              return <td key={holeNum} className="p-2 text-center text-muted-foreground">-</td>;
+                            }
+                            const playerPts = holeResult.points.find((p) => p.playerId === player.id);
+                            const pts = playerPts?.points || 0;
+
+                            return (
+                              <td
+                                key={holeNum}
+                                className={cn(
+                                  "p-2 text-center",
+                                  holeResult.isCarryover && "text-yellow-600 font-medium",
+                                  pts >= 5 && !holeResult.isCarryover && "text-green-600 font-bold",
+                                  pts === 1 && !holeResult.isCarryover && "text-red-600"
+                                )}
+                              >
+                                {formatHolePoints(pts, holeResult.isCarryover)}
+                              </td>
+                            );
+                          })}
+                          <td className="p-2 text-center font-medium bg-muted/50">{frontTotal}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {/* Back 9 */}
+                <table className="w-full text-sm mt-2">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="p-2 text-left font-medium sticky left-0 bg-muted/50">Hole</th>
+                      {[10, 11, 12, 13, 14, 15, 16, 17, 18].map((hole) => (
+                        <th key={hole} className="p-2 text-center font-medium min-w-[36px]">{hole}</th>
+                      ))}
+                      <th className="p-2 text-center font-medium bg-muted">In</th>
+                      <th className="p-2 text-center font-medium bg-muted">Tot</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {round.players.map((player) => {
+                      const backTotal = ninesState.holeResults
+                        .filter((h) => h.holeNumber > 9)
+                        .reduce((sum, h) => {
+                          const pts = h.points.find((p) => p.playerId === player.id);
+                          return sum + (pts?.points || 0);
+                        }, 0);
+
+                      const totalPts = ninesState.totalPoints.find((p) => p.playerId === player.id)?.points || 0;
+
+                      return (
+                        <tr key={player.id} className="border-b">
+                          <td className="p-2 font-medium sticky left-0 bg-background">
+                            {player.player.name.split(" ")[0]}
+                          </td>
+                          {[10, 11, 12, 13, 14, 15, 16, 17, 18].map((holeNum) => {
+                            const holeResult = ninesState.holeResults.find((h) => h.holeNumber === holeNum);
+                            if (!holeResult) {
+                              return <td key={holeNum} className="p-2 text-center text-muted-foreground">-</td>;
+                            }
+                            const playerPts = holeResult.points.find((p) => p.playerId === player.id);
+                            const pts = playerPts?.points || 0;
+
+                            return (
+                              <td
+                                key={holeNum}
+                                className={cn(
+                                  "p-2 text-center",
+                                  holeResult.isCarryover && "text-yellow-600 font-medium",
+                                  pts >= 5 && !holeResult.isCarryover && "text-green-600 font-bold",
+                                  pts === 1 && !holeResult.isCarryover && "text-red-600"
+                                )}
+                              >
+                                {formatHolePoints(pts, holeResult.isCarryover)}
+                              </td>
+                            );
+                          })}
+                          <td className="p-2 text-center font-medium bg-muted/50">{backTotal}</td>
+                          <td className="p-2 text-center font-bold bg-muted/50">{totalPts}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+
+            {/* Running Settlement */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Running Total</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {ninesState.totalPoints.map((p) => {
+                    const player = round.players.find((rp) => rp.id === p.playerId);
+                    const totalPointsAwarded = ninesState.totalPoints.reduce((sum, tp) => sum + tp.points, 0);
+                    const averagePoints = totalPointsAwarded / 3;
+                    const netPoints = p.points - averagePoints;
+                    const money = netPoints * parseFloat(round.ninesPointValue);
+
+                    return (
+                      <div key={p.playerId} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                        <div className="flex items-center gap-2">
+                          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary">
+                            {player?.player.name.split(" ").map((n) => n[0]).join("").toUpperCase()}
+                          </div>
+                          <span className="font-medium">{player?.player.name.split(" ")[0]}</span>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold">{p.points} pts</p>
+                          <p className={cn(
+                            "text-sm",
+                            money > 0 && "text-green-600",
+                            money < 0 && "text-red-600"
+                          )}>
+                            {money >= 0 ? "+" : ""}{money.toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {ninesState.pendingCarryover > 0 && (
+                  <div className="mt-3 pt-3 border-t">
+                    <p className="text-sm text-yellow-600 font-medium">
+                      {ninesState.pendingCarryover} points pending carryover
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

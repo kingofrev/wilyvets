@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { courseId, betAmount, handicapMode, autoPressAt2, players } = await request.json();
+    const { courseId, betAmount, handicapMode, autoPressAt2, ninesEnabled, ninesPointValue, players } = await request.json();
 
     if (!courseId || !players || players.length < 2) {
       return NextResponse.json(
@@ -65,6 +65,8 @@ export async function POST(request: NextRequest) {
         betAmount: parseFloat(betAmount) || 5,
         handicapMode: handicapMode || "GROUP_LOWEST",
         autoPressAt2: autoPressAt2 || false,
+        ninesEnabled: ninesEnabled || false,
+        ninesPointValue: parseFloat(ninesPointValue) || 1,
         status: "IN_PROGRESS",
         players: {
           create: players.map((p: any) => {

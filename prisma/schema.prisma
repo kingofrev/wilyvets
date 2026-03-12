@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ============================================
@@ -21,9 +23,11 @@ model User {
   updatedAt     DateTime      @updatedAt
 
   // Relations
-  players       Player[]      // Players this user has added to their account
-  rounds        Round[]       // Rounds created by this user
-  roundPlayers  RoundPlayer[] // Rounds this user has played in
+  players              Player[]           // Players this user has added to their account
+  rounds               Round[]            // Rounds created by this user
+  roundPlayers         RoundPlayer[]      // Rounds this user has played in
+  majorsTournaments    MajorsTournament[] @relation("MajorsTournamentCreator")
+  majorsEntries        MajorsEntry[]      @relation("MajorsEntries")
 }
 
 // ============================================
@@ -117,6 +121,10 @@ model Round {
   betAmount       Decimal       @db.Decimal(10, 2) @default(5.00)
   handicapMode    HandicapMode  @default(GROUP_LOWEST)
   autoPressAt2    Boolean       @default(false)
+
+  // 9s Game settings (3 players only)
+  ninesEnabled    Boolean       @default(false)
+  ninesPointValue Decimal       @db.Decimal(10, 2) @default(1.00)
 
   // Tracking
   currentHole     Int           @default(1)
@@ -270,6 +278,121 @@ model HeadToHeadRecord {
   updatedAt       DateTime      @updatedAt
 
   @@unique([player1Id, player2Id])
+}
+
+// ============================================
+// Majors Pool
+// ============================================
+
+enum MajorsTournamentType {
+  PLAYERS_CHAMPIONSHIP
+  MASTERS
+  PGA_CHAMPIONSHIP
+  US_OPEN
+  THE_OPEN
+}
+
+enum MajorsTournamentStatus {
+  UPCOMING      // Picks open, odds loaded
+  IN_PROGRESS   // Tournament underway
+  COMPLETED     // Final results
+}
+
+model MajorsTournament {
+  id              String                 @id @default(cuid())
+  name            String
+  type            MajorsTournamentType
+  year            Int
+  status          MajorsTournamentStatus @default(UPCOMING)
+
+  // ESPN config for score fetching
+  espnLeague      String                 @default("pga") // "pga", "masters"
+  espnEventId     String?
+
+  // The Odds API config
+  oddsApiSportKey String?
+
+  oddsUpdatedAt   DateTime?
+  scoresUpdatedAt DateTime?
+
+  createdById     String
+  createdBy       User                   @relation("MajorsTournamentCreator", fields: [createdById], references: [id])
+
+  golfers         MajorsGolfer[]
+  entries         MajorsEntry[]
+
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+}
+
+model MajorsGolfer {
+  id           String           @id @default(cuid())
+  tournamentId String
+  tournament   MajorsTournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  name         String
+  espnId       String?
+  odds         Int              // American odds magnitude (e.g. 1000 = +1000)
+  tier         Int              // 1–6
+
+  // Live scores (strokes relative to par per round)
+  r1Score      Int?
+  r2Score      Int?
+  r3Score      Int?
+  r4Score      Int?
+  totalScore   Int?             // Strokes relative to par, total
+  position     String?          // "T3", "1", "CUT", "WD"
+  isCut        Boolean          @default(false)
+  isWithdrawn  Boolean          @default(false)
+
+  picks        MajorsPickGolfer[]
+  winnerPicks  MajorsEntry[]    @relation("WinnerPick")
+
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([tournamentId, name])
+}
+
+model MajorsEntry {
+  id           String           @id @default(cuid())
+  tournamentId String
+  tournament   MajorsTournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  entrantName  String
+  email        String?
+  userId       String?
+  user         User?            @relation("MajorsEntries", fields: [userId], references: [id])
+
+  // Winner side bet pick
+  winnerPickId String?
+  winnerPick   MajorsGolfer?    @relation("WinnerPick", fields: [winnerPickId], references: [id])
+
+  // Tiebreaker: predicted winning score (strokes relative to par, e.g. -15)
+  tiebreaker   Int?
+
+  // Calculated standings
+  totalScore   Int?
+  rank         Int?
+
+  picks        MajorsPickGolfer[]
+
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([tournamentId, email])
+}
+
+model MajorsPickGolfer {
+  id        String       @id @default(cuid())
+  entryId   String
+  entry     MajorsEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  golferId  String
+  golfer    MajorsGolfer @relation(fields: [golferId], references: [id])
+  tier      Int          // 1–6
+  isDropped Boolean      @default(false)
+
+  @@unique([entryId, tier])
 }
 
 // ============================================

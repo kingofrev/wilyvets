@@ -74,7 +74,7 @@ export default function RegisterPage() {
           </div>
           <CardTitle className="text-2xl font-bold">Create Account</CardTitle>
           <CardDescription>
-            Join Nassau to track your golf bets
+            Join WilyVets to track your golf bets
           </CardDescription>
         </CardHeader>
         <form onSubmit={onSubmit}>
