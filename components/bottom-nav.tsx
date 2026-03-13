@@ -9,8 +9,8 @@ const navigation = [
   { name: "Home", href: "/", icon: Home },
   { name: "Players", href: "/players", icon: Users },
   { name: "New", href: "/rounds/new", icon: PlusCircle },
+  { name: "Courses", href: "/courses", icon: MapPin },
   { name: "Majors", href: "/majors", icon: Award },
-  { name: "Records", href: "/records", icon: Trophy },
 ];
 
 export function BottomNav() {
