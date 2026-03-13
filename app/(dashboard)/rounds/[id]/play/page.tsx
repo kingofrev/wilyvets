@@ -175,12 +175,24 @@ export default function PlayRoundPage() {
   async function saveScores() {
     if (!round) return;
 
+    // Fill empty scores up to currentHole with par before saving
+    const filledScores = { ...scores };
+    for (const player of round.players) {
+      for (let hole = 1; hole <= currentHole; hole++) {
+        if (!filledScores[player.id]?.[hole]) {
+          const par = round.course.holes.find((h) => h.holeNumber === hole)?.par ?? 4;
+          filledScores[player.id] = { ...filledScores[player.id], [hole]: par.toString() };
+        }
+      }
+    }
+    setScores(filledScores);
+
     setIsSaving(true);
     try {
       const scoreInputs = [];
       for (const player of round.players) {
         for (let hole = 1; hole <= 18; hole++) {
-          const scoreValue = scores[player.id]?.[hole];
+          const scoreValue = filledScores[player.id]?.[hole];
           if (scoreValue && scoreValue !== "") {
             scoreInputs.push({
               roundPlayerId: player.id,
