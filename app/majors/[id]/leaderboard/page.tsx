@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ChevronDown, ChevronUp, Trophy, Send } from "lucide-react"
+import { ChevronDown, ChevronUp, Trophy, Send, MessageCircle, X } from "lucide-react"
 import { formatScore } from "@/lib/games/majors"
 
 interface Golfer {
@@ -55,6 +55,68 @@ interface Message {
   createdAt: string
 }
 
+function ChatBody({
+  messages,
+  chatName,
+  chatInput,
+  sending,
+  messagesEndRef,
+  onNameChange,
+  onInputChange,
+  onSubmit,
+  fullHeight,
+}: {
+  messages: Message[]
+  chatName: string
+  chatInput: string
+  sending: boolean
+  messagesEndRef: React.RefObject<HTMLDivElement>
+  onNameChange: (v: string) => void
+  onInputChange: (v: string) => void
+  onSubmit: (e: React.FormEvent) => void
+  fullHeight?: boolean
+}) {
+  return (
+    <div className="space-y-3 flex flex-col h-full">
+      <div className={`overflow-y-auto space-y-2 pr-1 ${fullHeight ? "flex-1" : "h-64"}`}>
+        {messages.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center pt-8">No messages yet. Say something!</p>
+        ) : (
+          messages.map((msg) => (
+            <div key={msg.id} className="text-sm">
+              <span className="font-medium">{msg.authorName}</span>
+              <span className="text-muted-foreground text-xs ml-1.5">{formatTime(msg.createdAt)}</span>
+              <p className="text-foreground/90 mt-0.5">{msg.body}</p>
+            </div>
+          ))
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+      <form onSubmit={onSubmit} className="space-y-2 shrink-0">
+        <Input
+          placeholder="Your name"
+          value={chatName}
+          onChange={(e) => onNameChange(e.target.value)}
+          maxLength={50}
+          className="text-sm"
+        />
+        <div className="flex gap-2">
+          <Input
+            placeholder="Say something..."
+            value={chatInput}
+            onChange={(e) => onInputChange(e.target.value)}
+            maxLength={500}
+            className="text-sm"
+          />
+          <Button type="submit" size="icon" disabled={sending || !chatInput.trim() || !chatName.trim()}>
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 const STATUS_LABEL: Record<string, string> = {
   UPCOMING: "Picks Open",
   IN_PROGRESS: "In Progress",
@@ -84,6 +146,7 @@ export default function PublicLeaderboardPage() {
   const [chatName, setChatName] = useState("")
   const [chatInput, setChatInput] = useState("")
   const [sending, setSending] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const lastMessageIdRef = useRef<string | null>(null)
 
@@ -307,54 +370,66 @@ export default function PublicLeaderboardPage() {
           )}
         </div>
 
-        {/* Chat */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Chat</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 p-3">
-            {/* Messages */}
-            <div className="h-64 overflow-y-auto space-y-2 pr-1">
-              {messages.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center pt-8">
-                  No messages yet. Say something!
-                </p>
-              ) : (
-                messages.map((msg) => (
-                  <div key={msg.id} className="text-sm">
-                    <span className="font-medium">{msg.authorName}</span>
-                    <span className="text-muted-foreground text-xs ml-1.5">{formatTime(msg.createdAt)}</span>
-                    <p className="text-foreground/90 mt-0.5">{msg.body}</p>
-                  </div>
-                ))
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input */}
-            <form onSubmit={sendMessage} className="space-y-2">
-              <Input
-                placeholder="Your name"
-                value={chatName}
-                onChange={(e) => setChatName(e.target.value)}
-                maxLength={50}
-                className="text-sm"
+        {/* Chat — inline on desktop */}
+        <div className="hidden sm:block">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Chat</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 p-3">
+              <ChatBody
+                messages={messages}
+                chatName={chatName}
+                chatInput={chatInput}
+                sending={sending}
+                messagesEndRef={messagesEndRef}
+                onNameChange={setChatName}
+                onInputChange={setChatInput}
+                onSubmit={sendMessage}
               />
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Say something..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  maxLength={500}
-                  className="text-sm"
-                />
-                <Button type="submit" size="icon" disabled={sending || !chatInput.trim() || !chatName.trim()}>
-                  <Send className="h-4 w-4" />
-                </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Chat — floating button + modal on mobile */}
+        <div className="sm:hidden">
+          <button
+            onClick={() => setChatOpen(true)}
+            className="fixed bottom-5 right-5 z-50 bg-primary text-primary-foreground rounded-full p-3.5 shadow-lg relative"
+            aria-label="Open chat"
+          >
+            <MessageCircle className="h-5 w-5" />
+            {messages.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                {messages.length > 9 ? "9+" : messages.length}
+              </span>
+            )}
+          </button>
+
+          {chatOpen && (
+            <div className="fixed inset-0 z-50 flex flex-col bg-background">
+              <div className="flex items-center justify-between px-4 py-3 border-b">
+                <span className="font-semibold text-sm">Chat</span>
+                <button onClick={() => setChatOpen(false)} aria-label="Close chat">
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-            </form>
-          </CardContent>
-        </Card>
+              <div className="flex-1 overflow-hidden p-3">
+                <ChatBody
+                  messages={messages}
+                  chatName={chatName}
+                  chatInput={chatInput}
+                  sending={sending}
+                  messagesEndRef={messagesEndRef}
+                  onNameChange={setChatName}
+                  onInputChange={setChatInput}
+                  onSubmit={sendMessage}
+                  fullHeight
+                />
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="text-center">
           <Link href={`/majors/${params.id}/enter`}>
