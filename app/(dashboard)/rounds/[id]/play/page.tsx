@@ -139,15 +139,10 @@ export default function PlayRoundPage() {
       const data = await response.json();
       setRound(data.round);
 
-      // Initialize scores from existing data, pre-fill with par for unscored holes
+      // Initialize scores from saved data only — leave unplayed holes empty
       const initialScores: Record<string, Record<number, string>> = {};
       for (const player of data.round.players) {
         initialScores[player.id] = {};
-        // First, set all holes to par as default
-        for (const hole of data.round.course.holes) {
-          initialScores[player.id][hole.holeNumber] = hole.par.toString();
-        }
-        // Then override with actual scores where they exist
         for (const score of player.scores) {
           initialScores[player.id][score.holeNumber] = score.grossStrokes.toString();
         }

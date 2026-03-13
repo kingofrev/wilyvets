@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { generateMatchPairings } from "@/lib/utils";
+import { generateMatchPairings, calculateCourseHandicap } from "@/lib/utils";
 
 export async function GET() {
   try {
@@ -53,9 +53,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }
 
-    // Calculate strokes given based on handicap mode
-    const playerHandicaps = players.map((p: any) => parseFloat(p.handicap) || 0);
-    const lowestInGroup = Math.min(...playerHandicaps);
+    // Calculate course handicaps using USGA formula
+    const coursePar = course.holes.reduce((sum, h) => sum + h.par, 0);
+    const courseRating = course.rating ? parseFloat(course.rating.toString()) : null;
+    const courseSlope = course.slope;
+
+    const playerCourseHandicaps = players.map((p: any) => ({
+      ...p,
+      handicapIndex: parseFloat(p.handicap) || 0,
+      courseHandicap: calculateCourseHandicap(parseFloat(p.handicap) || 0, courseSlope, courseRating, coursePar),
+    }));
+    const lowestCourseHandicap = Math.min(...playerCourseHandicaps.map((p: any) => p.courseHandicap));
 
     // Create round with players
     const round = await prisma.round.create({
@@ -69,16 +77,15 @@ export async function POST(request: NextRequest) {
         ninesPointValue: parseFloat(ninesPointValue) || 1,
         status: "IN_PROGRESS",
         players: {
-          create: players.map((p: any) => {
-            const handicap = parseFloat(p.handicap) || 0;
+          create: playerCourseHandicaps.map((p: any) => {
             const strokesGiven = handicapMode === "GROUP_LOWEST"
-              ? Math.round(handicap - lowestInGroup)
-              : 0; // Will be calculated per-match for MATCH_LOWEST
+              ? p.courseHandicap - lowestCourseHandicap
+              : 0; // Calculated per-match for MATCH_LOWEST
 
             return {
               userId: p.userId || null,
               playerId: p.playerId || null,
-              handicap,
+              handicap: p.handicapIndex,
               playerName: p.name,
               strokesGiven,
             };
@@ -91,20 +98,26 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Build a map from RoundPlayer id → course handicap (order matches playerCourseHandicaps)
+    const courseHcpByRoundPlayerId = new Map<string, number>();
+    round.players.forEach((rp, i) => {
+      courseHcpByRoundPlayerId.set(rp.id, playerCourseHandicaps[i].courseHandicap);
+    });
+
     // Create matches for all player pairings
     const pairings = generateMatchPairings(round.players);
 
     for (const [p1, p2] of pairings) {
-      const p1Handicap = Number(p1.handicap);
-      const p2Handicap = Number(p2.handicap);
+      const p1CourseHcp = courseHcpByRoundPlayerId.get(p1.id) ?? Number(p1.handicap);
+      const p2CourseHcp = courseHcpByRoundPlayerId.get(p2.id) ?? Number(p2.handicap);
 
-      // Calculate stroke difference for this match
+      // Calculate stroke difference using course handicaps
       let strokeDiff: number;
       if (handicapMode === "MATCH_LOWEST") {
-        const lowestInMatch = Math.min(p1Handicap, p2Handicap);
-        strokeDiff = Math.round(p2Handicap - lowestInMatch) - Math.round(p1Handicap - lowestInMatch);
+        const lowestInMatch = Math.min(p1CourseHcp, p2CourseHcp);
+        strokeDiff = (p2CourseHcp - lowestInMatch) - (p1CourseHcp - lowestInMatch);
       } else {
-        strokeDiff = Math.round(p2Handicap - lowestInGroup) - Math.round(p1Handicap - lowestInGroup);
+        strokeDiff = (p2CourseHcp - lowestCourseHandicap) - (p1CourseHcp - lowestCourseHandicap);
       }
 
       await prisma.match.create({
