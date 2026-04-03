@@ -4,18 +4,10 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { recalculateStandings } from "@/lib/majors-standings"
 
-interface ESPNCompetitor {
-  id: string
-  order?: number
-  athlete?: { id: string; displayName: string }
-  score?: string
-  linescores?: { displayValue?: string }[]
-  statistics?: { name: string; displayValue: string }[]
-}
+// ─── Shared score parser (ESPN + Masters topar field) ────────────────────────
 
 function parseScore(val: string | number | undefined | null): number | null {
   if (val === undefined || val === null) return null
-  if (typeof val === "number") return isNaN(val) ? null : val
   const s = String(val).trim()
   if (s === "" || s === "-") return null
   if (s === "E") return 0
@@ -23,6 +15,95 @@ function parseScore(val: string | number | undefined | null): number | null {
   return isNaN(n) ? null : n
 }
 
+// ─── Masters.com ─────────────────────────────────────────────────────────────
+
+const MASTERS_PAR = 72
+
+interface MastersPlayer {
+  id: string
+  first_name: string
+  last_name: string
+  pos: string
+  status: string   // "-1" = cut, "W" = WD, "D" = DQ, "1" = active
+  topar: string    // score to par: "-10", "E", "+3"
+  round1?: { total?: string | null }
+  round2?: { total?: string | null }
+  round3?: { total?: string | null }
+  round4?: { total?: string | null }
+}
+
+/** Convert gross strokes to score-to-par. Returns null if round not yet played. */
+function mastersRoundScore(grossStr: string | null | undefined): number | null {
+  if (!grossStr) return null
+  const n = parseInt(grossStr)
+  // Sanity check: lowest round ever at Augusta was 62, highest would be ~85
+  if (isNaN(n) || n < 55 || n > 100) return null
+  return n - MASTERS_PAR
+}
+
+async function fetchFromMasters(
+  year: number,
+  golfers: { id: string; name: string }[],
+): Promise<{ updated: number }> {
+  const url = `https://www.masters.com/en_US/scores/feeds/${year}/scores.json`
+  const res = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; WilyVets/1.0)" },
+    cache: "no-store",
+  })
+
+  if (!res.ok) throw new Error(`Masters.com returned ${res.status}`)
+
+  const json = await res.json()
+  const players: MastersPlayer[] = json?.data?.player ?? []
+
+  if (players.length === 0) throw new Error("Masters.com data not available yet — tournament may not have started")
+
+  // Build lookup by full name (lowercase)
+  const byName = new Map<string, MastersPlayer>()
+  for (const p of players) {
+    const full = `${p.first_name} ${p.last_name}`.toLowerCase().trim()
+    byName.set(full, p)
+    // Also index by "Last, First" in case names were stored that way
+    const reversed = `${p.last_name}, ${p.first_name}`.toLowerCase().trim()
+    byName.set(reversed, p)
+  }
+
+  let updated = 0
+  for (const golfer of golfers) {
+    const player = byName.get(golfer.name.toLowerCase().trim())
+    if (!player) continue
+
+    const r1 = mastersRoundScore(player.round1?.total)
+    const r2 = mastersRoundScore(player.round2?.total)
+    const r3 = mastersRoundScore(player.round3?.total)
+    const r4 = mastersRoundScore(player.round4?.total)
+    const totalScore = parseScore(player.topar)
+
+    const isCut = player.status === "-1" || player.pos === "MC"
+    const isWithdrawn = player.status === "W" || player.pos === "WD"
+
+    // pos is already in display format: "1", "T3", "MC", "WD", "DQ"
+    const position = player.pos || null
+
+    await prisma.majorsGolfer.update({
+      where: { id: golfer.id },
+      data: { r1Score: r1, r2Score: r2, r3Score: r3, r4Score: r4, totalScore, position, isCut, isWithdrawn },
+    })
+    updated++
+  }
+
+  return { updated }
+}
+
+// ─── ESPN ─────────────────────────────────────────────────────────────────────
+
+interface ESPNCompetitor {
+  id: string
+  order?: number
+  athlete?: { id: string; displayName: string }
+  score?: string
+  linescores?: { displayValue?: string }[]
+}
 
 function extractCompetitors(data: unknown): ESPNCompetitor[] {
   try {
@@ -39,47 +120,24 @@ function extractCompetitors(data: unknown): ESPNCompetitor[] {
   }
 }
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const tournament = await prisma.majorsTournament.findUnique({
-    where: { id: params.id },
-    include: { golfers: true },
-  })
-
-  if (!tournament) return NextResponse.json({ error: "Not found" }, { status: 404 })
-  if (tournament.createdById !== session.user.id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
-
-  // Build ESPN URL
-  const league = tournament.espnLeague || "pga"
-  const eventParam = tournament.espnEventId ? `?event=${tournament.espnEventId}` : ""
-  const espnUrl = `https://site.api.espn.com/apis/site/v2/sports/golf/${league}/scoreboard${eventParam}`
+async function fetchFromESPN(
+  espnLeague: string,
+  espnEventId: string | null,
+  golfers: { id: string; name: string; espnId: string | null }[],
+): Promise<{ updated: number }> {
+  const eventParam = espnEventId ? `?event=${espnEventId}` : ""
+  const espnUrl = `https://site.api.espn.com/apis/site/v2/sports/golf/${espnLeague}/scoreboard${eventParam}`
 
   const espnRes = await fetch(espnUrl, {
     headers: { "User-Agent": "Mozilla/5.0 (compatible; WilyVets/1.0)" },
   })
 
-  if (!espnRes.ok) {
-    return NextResponse.json(
-      { error: `ESPN API error ${espnRes.status}. Check espnLeague/espnEventId settings.` },
-      { status: 502 },
-    )
-  }
+  if (!espnRes.ok) throw new Error(`ESPN API error ${espnRes.status}`)
 
   const espnData = await espnRes.json()
   const competitors = extractCompetitors(espnData)
+  if (competitors.length === 0) throw new Error("No competitor data found in ESPN response")
 
-  if (competitors.length === 0) {
-    return NextResponse.json(
-      { error: "No competitor data found. Tournament may not have started yet." },
-      { status: 404 },
-    )
-  }
-
-  // Build lookup maps
   const byName = new Map<string, ESPNCompetitor>()
   const byEspnId = new Map<string, ESPNCompetitor>()
   for (const c of competitors) {
@@ -88,24 +146,19 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   let updated = 0
-
-  for (const golfer of tournament.golfers) {
+  for (const golfer of golfers) {
     const comp =
       (golfer.espnId ? byEspnId.get(golfer.espnId) : undefined) ??
       byName.get(golfer.name.toLowerCase())
-
     if (!comp) continue
 
-    // linescores: individual round scores to par (use displayValue, not value)
     const ls = comp.linescores ?? []
     const r1 = parseScore(ls[0]?.displayValue)
     const r2 = parseScore(ls[1]?.displayValue)
     const r3 = parseScore(ls[2]?.displayValue)
     const r4 = parseScore(ls[3]?.displayValue)
-    // comp.score is a string like "-4", "E", "+2"
     const totalScore = parseScore(comp.score)
 
-    // Position from leaderboard order; CUT/WD detection via score string
     const scoreStr = (comp.score ?? "").toUpperCase()
     const isCut = scoreStr === "CUT"
     const isWithdrawn = scoreStr === "WD"
@@ -120,11 +173,51 @@ export async function POST(request: Request, { params }: { params: { id: string 
     updated++
   }
 
-  await recalculateStandings(params.id)
-  await prisma.majorsTournament.update({
+  return { updated }
+}
+
+// ─── Route handler ────────────────────────────────────────────────────────────
+
+export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const tournament = await prisma.majorsTournament.findUnique({
     where: { id: params.id },
-    data: { scoresUpdatedAt: new Date() },
+    include: { golfers: true },
   })
 
-  return NextResponse.json({ updated, total: tournament.golfers.length })
+  if (!tournament) return NextResponse.json({ error: "Not found" }, { status: 404 })
+  if (tournament.createdById !== session.user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
+  try {
+    let updated: number
+
+    if (tournament.type === "MASTERS") {
+      const result = await fetchFromMasters(tournament.year, tournament.golfers)
+      updated = result.updated
+    } else {
+      const result = await fetchFromESPN(
+        tournament.espnLeague || "pga",
+        tournament.espnEventId,
+        tournament.golfers,
+      )
+      updated = result.updated
+    }
+
+    await recalculateStandings(params.id)
+    await prisma.majorsTournament.update({
+      where: { id: params.id },
+      data: { scoresUpdatedAt: new Date() },
+    })
+
+    return NextResponse.json({ updated, total: tournament.golfers.length })
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to fetch scores" },
+      { status: 502 },
+    )
+  }
 }

@@ -320,10 +320,21 @@ model MajorsTournament {
 
   golfers         MajorsGolfer[]
   entries         MajorsEntry[]
+  groups          MajorsGroup[]
   messages        MajorsMessage[]
 
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
+}
+
+model MajorsGroup {
+  id           String           @id @default(cuid())
+  tournamentId String
+  tournament   MajorsTournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  name         String
+  createdAt    DateTime         @default(now())
+
+  entries      MajorsEntry[]
 }
 
 model MajorsMessage {
@@ -369,6 +380,10 @@ model MajorsEntry {
   tournamentId String
   tournament   MajorsTournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
 
+  // Optional group — if set, entry belongs to this sub-pool
+  groupId      String?
+  group        MajorsGroup?     @relation(fields: [groupId], references: [id])
+
   entrantName  String
   email        String?
   userId       String?
@@ -389,8 +404,6 @@ model MajorsEntry {
 
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
-
-  @@unique([tournamentId, email])
 }
 
 model MajorsPickGolfer {

@@ -27,7 +27,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
 // POST — no auth required (public entry form)
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const body = await request.json()
-  const { entrantName, email, picks, winnerPickId, tiebreaker } = body
+  const { entrantName, email, picks, winnerPickId, tiebreaker, groupId } = body
 
   if (!entrantName) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 })
@@ -49,13 +49,23 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ error: "This tournament has ended — picks are closed" }, { status: 400 })
   }
 
-  // Check for duplicate email
+  // Validate group belongs to this tournament
+  if (groupId) {
+    const group = await prisma.majorsGroup.findUnique({ where: { id: groupId } })
+    if (!group || group.tournamentId !== params.id) {
+      return NextResponse.json({ error: "Invalid group" }, { status: 400 })
+    }
+  }
+
+  // Check for duplicate email within the same scope (group or tournament)
   if (email) {
-    const existing = await prisma.majorsEntry.findUnique({
-      where: { tournamentId_email: { tournamentId: params.id, email } },
+    const existing = await prisma.majorsEntry.findFirst({
+      where: groupId
+        ? { groupId, email }
+        : { tournamentId: params.id, groupId: null, email },
     })
     if (existing) {
-      return NextResponse.json({ error: "An entry with this email already exists" }, { status: 400 })
+      return NextResponse.json({ error: "An entry with this email already exists in this pool" }, { status: 400 })
     }
   }
 
@@ -84,6 +94,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const entry = await prisma.majorsEntry.create({
     data: {
       tournamentId: params.id,
+      groupId: groupId || null,
       entrantName,
       email: email || null,
       userId: session?.user?.id ?? null,

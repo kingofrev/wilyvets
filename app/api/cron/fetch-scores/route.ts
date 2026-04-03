@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { recalculateStandings } from "@/lib/majors-standings"
 
+// ─── Shared score parser ──────────────────────────────────────────────────────
+
 function parseScore(val: string | undefined | null): number | null {
   if (!val) return null
   const s = String(val).trim()
@@ -11,25 +13,150 @@ function parseScore(val: string | undefined | null): number | null {
   return isNaN(n) ? null : n
 }
 
-function extractCompetitors(data: unknown) {
+// ─── Masters.com ─────────────────────────────────────────────────────────────
+
+const MASTERS_PAR = 72
+
+interface MastersPlayer {
+  first_name: string
+  last_name: string
+  pos: string
+  status: string
+  topar: string
+  round1?: { total?: string | null }
+  round2?: { total?: string | null }
+  round3?: { total?: string | null }
+  round4?: { total?: string | null }
+}
+
+function mastersRoundScore(grossStr: string | null | undefined): number | null {
+  if (!grossStr) return null
+  const n = parseInt(grossStr)
+  if (isNaN(n) || n < 55 || n > 100) return null
+  return n - MASTERS_PAR
+}
+
+async function fetchFromMasters(
+  year: number,
+  golfers: { id: string; name: string }[],
+): Promise<{ updated: number; error?: string }> {
   try {
-    const d = data as Record<string, unknown>
+    const url = `https://www.masters.com/en_US/scores/feeds/${year}/scores.json`
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; WilyVets/1.0)" },
+      cache: "no-store",
+    })
+    if (!res.ok) return { updated: 0, error: `Masters.com ${res.status}` }
+
+    const json = await res.json()
+    const players: MastersPlayer[] = json?.data?.player ?? []
+    if (players.length === 0) return { updated: 0, error: "Masters.com data not available yet" }
+
+    const byName = new Map<string, MastersPlayer>()
+    for (const p of players) {
+      byName.set(`${p.first_name} ${p.last_name}`.toLowerCase().trim(), p)
+      byName.set(`${p.last_name}, ${p.first_name}`.toLowerCase().trim(), p)
+    }
+
+    let updated = 0
+    for (const golfer of golfers) {
+      const player = byName.get(golfer.name.toLowerCase().trim())
+      if (!player) continue
+
+      const r1 = mastersRoundScore(player.round1?.total)
+      const r2 = mastersRoundScore(player.round2?.total)
+      const r3 = mastersRoundScore(player.round3?.total)
+      const r4 = mastersRoundScore(player.round4?.total)
+      const totalScore = parseScore(player.topar)
+      const isCut = player.status === "-1" || player.pos === "MC"
+      const isWithdrawn = player.status === "W" || player.pos === "WD"
+      const position = player.pos || null
+
+      await prisma.majorsGolfer.update({
+        where: { id: golfer.id },
+        data: { r1Score: r1, r2Score: r2, r3Score: r3, r4Score: r4, totalScore, position, isCut, isWithdrawn },
+      })
+      updated++
+    }
+
+    return { updated }
+  } catch (err) {
+    return { updated: 0, error: String(err) }
+  }
+}
+
+// ─── ESPN ─────────────────────────────────────────────────────────────────────
+
+async function fetchFromESPN(
+  espnLeague: string,
+  espnEventId: string | null,
+  golfers: { id: string; name: string; espnId: string | null }[],
+): Promise<{ updated: number; error?: string }> {
+  try {
+    const eventParam = espnEventId ? `?event=${espnEventId}` : ""
+    const espnUrl = `https://site.api.espn.com/apis/site/v2/sports/golf/${espnLeague}/scoreboard${eventParam}`
+
+    const espnRes = await fetch(espnUrl)
+    if (!espnRes.ok) return { updated: 0, error: `ESPN ${espnRes.status}` }
+
+    const d = await espnRes.json() as Record<string, unknown>
     const events = (d.events ?? d.event) as unknown[]
-    if (!Array.isArray(events) || events.length === 0) return []
+    if (!Array.isArray(events) || events.length === 0) return { updated: 0, error: "No events in ESPN response" }
     const event = events[0] as Record<string, unknown>
     const competitions = event.competitions as unknown[]
-    if (!Array.isArray(competitions) || competitions.length === 0) return []
+    if (!Array.isArray(competitions) || competitions.length === 0) return { updated: 0, error: "No competitions found" }
     const comp = competitions[0] as Record<string, unknown>
-    return (comp.competitors as {
+    const competitors = (comp.competitors as {
       order?: number
       athlete?: { id: string; displayName: string }
       score?: string
       linescores?: { displayValue?: string }[]
     }[]) ?? []
-  } catch {
-    return []
+
+    if (competitors.length === 0) return { updated: 0, error: "No competitors found" }
+
+    const byName = new Map<string, typeof competitors[0]>()
+    const byEspnId = new Map<string, typeof competitors[0]>()
+    for (const c of competitors) {
+      if (c.athlete?.displayName) byName.set(c.athlete.displayName.toLowerCase(), c)
+      if (c.athlete?.id) byEspnId.set(c.athlete.id, c)
+    }
+
+    let updated = 0
+    for (const golfer of golfers) {
+      const c =
+        (golfer.espnId ? byEspnId.get(golfer.espnId) : undefined) ??
+        byName.get(golfer.name.toLowerCase())
+      if (!c) continue
+
+      const ls = c.linescores ?? []
+      const r1 = parseScore(ls[0]?.displayValue)
+      const r2 = parseScore(ls[1]?.displayValue)
+      const r3 = parseScore(ls[2]?.displayValue)
+      const r4 = parseScore(ls[3]?.displayValue)
+      const totalScore = parseScore(c.score)
+
+      const scoreStr = (c.score ?? "").toUpperCase()
+      const isCut = scoreStr === "CUT"
+      const isWithdrawn = scoreStr === "WD"
+      let position: string | null = c.order != null ? String(c.order) : null
+      if (isCut) position = "CUT"
+      if (isWithdrawn) position = "WD"
+
+      await prisma.majorsGolfer.update({
+        where: { id: golfer.id },
+        data: { r1Score: r1, r2Score: r2, r3Score: r3, r4Score: r4, totalScore, position, isCut, isWithdrawn },
+      })
+      updated++
+    }
+
+    return { updated }
+  } catch (err) {
+    return { updated: 0, error: String(err) }
   }
 }
+
+// ─── Cron handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
   const auth = request.headers.get("authorization")
@@ -50,69 +177,27 @@ export async function POST(request: Request) {
   const results: Record<string, { updated: number; total: number; error?: string }> = {}
 
   for (const tournament of tournaments) {
-    try {
-      const league = tournament.espnLeague || "pga"
-      const eventParam = tournament.espnEventId ? `?event=${tournament.espnEventId}` : ""
-      const espnUrl = `https://site.api.espn.com/apis/site/v2/sports/golf/${league}/scoreboard${eventParam}`
+    let result: { updated: number; error?: string }
 
-      const espnRes = await fetch(espnUrl)
-      if (!espnRes.ok) {
-        results[tournament.id] = { updated: 0, total: 0, error: `ESPN ${espnRes.status}` }
-        continue
-      }
+    if (tournament.type === "MASTERS") {
+      result = await fetchFromMasters(tournament.year, tournament.golfers)
+    } else {
+      result = await fetchFromESPN(
+        tournament.espnLeague || "pga",
+        tournament.espnEventId,
+        tournament.golfers,
+      )
+    }
 
-      const espnData = await espnRes.json()
-      const competitors = extractCompetitors(espnData)
-      if (competitors.length === 0) {
-        results[tournament.id] = { updated: 0, total: 0, error: "No competitors found" }
-        continue
-      }
-
-      const byName = new Map<string, typeof competitors[0]>()
-      const byEspnId = new Map<string, typeof competitors[0]>()
-      for (const c of competitors) {
-        if (c.athlete?.displayName) byName.set(c.athlete.displayName.toLowerCase(), c)
-        if (c.athlete?.id) byEspnId.set(c.athlete.id, c)
-      }
-
-      let updated = 0
-      for (const golfer of tournament.golfers) {
-        const comp =
-          (golfer.espnId ? byEspnId.get(golfer.espnId) : undefined) ??
-          byName.get(golfer.name.toLowerCase())
-        if (!comp) continue
-
-        const ls = comp.linescores ?? []
-        const r1 = parseScore(ls[0]?.displayValue)
-        const r2 = parseScore(ls[1]?.displayValue)
-        const r3 = parseScore(ls[2]?.displayValue)
-        const r4 = parseScore(ls[3]?.displayValue)
-        const totalScore = parseScore(comp.score)
-
-        const scoreStr = (comp.score ?? "").toUpperCase()
-        const isCut = scoreStr === "CUT"
-        const isWithdrawn = scoreStr === "WD"
-        let position: string | null = comp.order != null ? String(comp.order) : null
-        if (isCut) position = "CUT"
-        if (isWithdrawn) position = "WD"
-
-        await prisma.majorsGolfer.update({
-          where: { id: golfer.id },
-          data: { r1Score: r1, r2Score: r2, r3Score: r3, r4Score: r4, totalScore, position, isCut, isWithdrawn },
-        })
-        updated++
-      }
-
+    if (!result.error) {
       await recalculateStandings(tournament.id)
       await prisma.majorsTournament.update({
         where: { id: tournament.id },
         data: { scoresUpdatedAt: new Date() },
       })
-
-      results[tournament.id] = { updated, total: tournament.golfers.length }
-    } catch (err) {
-      results[tournament.id] = { updated: 0, total: 0, error: String(err) }
     }
+
+    results[tournament.id] = { ...result, total: tournament.golfers.length }
   }
 
   return NextResponse.json({ results })

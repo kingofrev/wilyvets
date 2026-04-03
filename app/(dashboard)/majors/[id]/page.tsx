@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/use-toast"
 import {
   ArrowLeft,
@@ -16,6 +17,10 @@ import {
   Trophy,
   ChevronDown,
   ChevronUp,
+  Plus,
+  Users,
+  ExternalLink,
+  Trash2,
 } from "lucide-react"
 import { formatScore, tierLabel } from "@/lib/games/majors"
 
@@ -51,6 +56,12 @@ interface Entry {
   rank: number | null
 }
 
+interface Group {
+  id: string
+  name: string
+  _count: { entries: number }
+}
+
 interface Tournament {
   id: string
   name: string
@@ -83,18 +94,28 @@ export default function MajorsTournamentPage() {
   const params = useParams()
   const { toast } = useToast()
   const [tournament, setTournament] = useState<Tournament | null>(null)
+  const [groups, setGroups] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchingOdds, setFetchingOdds] = useState(false)
   const [fetchingScores, setFetchingScores] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<string | null>(null)
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"leaderboard" | "field">("leaderboard")
+  const [newGroupName, setNewGroupName] = useState("")
+  const [creatingGroup, setCreatingGroup] = useState(false)
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/majors/${params.id}`)
-    if (res.ok) {
-      const d = await res.json()
+    const [tRes, gRes] = await Promise.all([
+      fetch(`/api/majors/${params.id}`),
+      fetch(`/api/majors/${params.id}/groups`),
+    ])
+    if (tRes.ok) {
+      const d = await tRes.json()
       setTournament(d.tournament)
+    }
+    if (gRes.ok) {
+      const d = await gRes.json()
+      setGroups(d.groups ?? [])
     }
     setLoading(false)
   }, [params.id])
@@ -150,11 +171,44 @@ export default function MajorsTournamentPage() {
     load()
   }
 
-  function copyShareLink() {
-    const url = `${window.location.origin}/majors/${params.id}/enter`
+  async function createGroup() {
+    if (!newGroupName.trim()) return
+    setCreatingGroup(true)
+    try {
+      const res = await fetch(`/api/majors/${params.id}/groups`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newGroupName.trim() }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error)
+      setNewGroupName("")
+      setGroups((prev) => [...prev, d.group])
+      toast({ title: "Group created!", description: `"${d.group.name}" is ready to share.` })
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to create group",
+        variant: "destructive",
+      })
+    } finally {
+      setCreatingGroup(false)
+    }
+  }
+
+  async function deleteGroup(groupId: string, groupName: string) {
+    if (!confirm(`Delete "${groupName}"? All entries in this group will be removed.`)) return
+    const res = await fetch(`/api/majors/${params.id}/groups?groupId=${groupId}`, { method: "DELETE" })
+    if (res.ok) {
+      setGroups((prev) => prev.filter((g) => g.id !== groupId))
+      toast({ title: "Group deleted" })
+    }
+  }
+
+  function copyLink(url: string, key: string) {
     navigator.clipboard.writeText(url)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    setCopied(key)
+    setTimeout(() => setCopied(null), 2000)
   }
 
   if (loading) return <p className="text-muted-foreground text-sm py-8 text-center">Loading...</p>
@@ -172,7 +226,6 @@ export default function MajorsTournamentPage() {
     return 0
   })
 
-  // Determine winner-pick winner
   const actualWinner = tournament.golfers
     .filter((g) => !g.isCut && !g.isWithdrawn && g.totalScore !== null)
     .sort((a, b) => (a.totalScore ?? 0) - (b.totalScore ?? 0))[0]
@@ -180,6 +233,8 @@ export default function MajorsTournamentPage() {
   const winnerPickWinners = actualWinner
     ? tournament.entries.filter((e) => e.winnerPick?.id === actualWinner.id)
     : []
+
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : ""
 
   return (
     <div className="space-y-5 pb-6">
@@ -205,7 +260,7 @@ export default function MajorsTournamentPage() {
               {STATUS_LABEL[tournament.status]}
             </Badge>
             <span className="text-xs text-muted-foreground">
-              {tournament.entries.length} {tournament.entries.length === 1 ? "entry" : "entries"}
+              {tournament.entries.length} {tournament.entries.length === 1 ? "entry" : "entries"} total
             </span>
           </div>
         </div>
@@ -236,15 +291,6 @@ export default function MajorsTournamentPage() {
               <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${fetchingScores ? "animate-spin" : ""}`} />
               {fetchingScores ? "Updating..." : "Refresh Scores"}
             </Button>
-            <Button size="sm" variant="outline" onClick={copyShareLink}>
-              {copied ? <Check className="h-3.5 w-3.5 mr-1.5" /> : <Share2 className="h-3.5 w-3.5 mr-1.5" />}
-              {copied ? "Copied!" : "Share Link"}
-            </Button>
-            <Link href={`/majors/${params.id}/leaderboard`} target="_blank">
-              <Button size="sm" variant="outline">
-                Public Leaderboard
-              </Button>
-            </Link>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -274,6 +320,87 @@ export default function MajorsTournamentPage() {
             <p className="text-xs text-muted-foreground">
               Scores last updated: {new Date(tournament.scoresUpdatedAt).toLocaleString()}
             </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Groups */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Pools / Groups</CardTitle>
+          <CardDescription className="text-xs">
+            Create separate pools and share a unique link with each group.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Create group */}
+          <div className="flex gap-2">
+            <Input
+              placeholder="e.g. Family Pool, Work Pool..."
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && createGroup()}
+              className="text-sm h-8"
+            />
+            <Button size="sm" onClick={createGroup} disabled={creatingGroup || !newGroupName.trim()}>
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              Add
+            </Button>
+          </div>
+
+          {/* Group list */}
+          {groups.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No groups yet. Create one above to get a shareable link.</p>
+          ) : (
+            <div className="space-y-2">
+              {groups.map((group) => {
+                const entryUrl = `${baseUrl}/majors/${params.id}/enter?group=${group.id}`
+                const lbUrl = `${baseUrl}/majors/${params.id}/leaderboard?group=${group.id}`
+                return (
+                  <div
+                    key={group.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-sm font-medium truncate">{group.name}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {group._count.entries} {group._count.entries === 1 ? "entry" : "entries"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => copyLink(entryUrl, `entry-${group.id}`)}
+                      >
+                        {copied === `entry-${group.id}` ? (
+                          <Check className="h-3 w-3 mr-1" />
+                        ) : (
+                          <Share2 className="h-3 w-3 mr-1" />
+                        )}
+                        {copied === `entry-${group.id}` ? "Copied!" : "Share"}
+                      </Button>
+                      <Link href={lbUrl} target="_blank">
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs">
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          Board
+                        </Button>
+                      </Link>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-destructive hover:text-destructive"
+                        onClick={() => deleteGroup(group.id, group.name)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -326,7 +453,7 @@ export default function MajorsTournamentPage() {
           className={`flex-1 py-2 text-sm font-medium transition-colors ${activeTab === "leaderboard" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/50"}`}
           onClick={() => setActiveTab("leaderboard")}
         >
-          Leaderboard
+          All Entries
         </button>
         <button
           className={`flex-1 py-2 text-sm font-medium transition-colors ${activeTab === "field" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/50"}`}
@@ -336,13 +463,13 @@ export default function MajorsTournamentPage() {
         </button>
       </div>
 
-      {/* Leaderboard Tab */}
+      {/* All Entries Tab */}
       {activeTab === "leaderboard" && (
         <div className="space-y-3">
           {sortedEntries.length === 0 && (
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground text-sm">
-                No entries yet. Share the link to invite players.
+                No entries yet. Create a group and share the link.
               </CardContent>
             </Card>
           )}

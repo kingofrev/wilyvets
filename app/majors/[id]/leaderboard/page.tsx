@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
-import { useParams } from "next/navigation"
+import { useState, useEffect, useRef, Suspense } from "react"
+import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -46,6 +46,8 @@ interface Tournament {
   entries: Entry[]
   golfers: Golfer[]
   entryCount: number
+  groupId: string | null
+  groupName: string | null
 }
 
 interface Message {
@@ -135,8 +137,11 @@ function formatTime(iso: string) {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
 }
 
-export default function PublicLeaderboardPage() {
+function PublicLeaderboardInner() {
   const params = useParams()
+  const searchParams = useSearchParams()
+  const groupId = searchParams.get("group")
+
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [loading, setLoading] = useState(true)
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
@@ -151,11 +156,14 @@ export default function PublicLeaderboardPage() {
   const lastMessageIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    fetch(`/api/majors/${params.id}/public`)
+    const url = groupId
+      ? `/api/majors/${params.id}/public?group=${groupId}`
+      : `/api/majors/${params.id}/public`
+    fetch(url)
       .then((r) => r.json())
       .then((d) => setTournament(d.tournament))
       .finally(() => setLoading(false))
-  }, [params.id])
+  }, [params.id, groupId])
 
   // Load saved name from localStorage
   useEffect(() => {
@@ -236,7 +244,12 @@ export default function PublicLeaderboardPage() {
         {/* Header */}
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold">{tournament.name}</h1>
+            <div>
+              <h1 className="text-2xl font-bold">{tournament.name}</h1>
+              {tournament.groupName && (
+                <p className="text-base font-medium text-primary">{tournament.groupName}</p>
+              )}
+            </div>
             <Badge
               variant={
                 tournament.status === "IN_PROGRESS"
@@ -432,11 +445,19 @@ export default function PublicLeaderboardPage() {
         </div>
 
         <div className="text-center">
-          <Link href={`/majors/${params.id}/enter`}>
+          <Link href={groupId ? `/majors/${params.id}/enter?group=${groupId}` : `/majors/${params.id}/enter`}>
             <Button variant="outline" size="sm">Submit Your Entry</Button>
           </Link>
         </div>
       </div>
     </div>
+  )
+}
+
+export default function PublicLeaderboardPage() {
+  return (
+    <Suspense fallback={<p className="text-muted-foreground text-sm py-8 text-center">Loading...</p>}>
+      <PublicLeaderboardInner />
+    </Suspense>
   )
 }

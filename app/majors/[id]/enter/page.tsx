@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useParams } from "next/navigation"
+import { useState, useEffect, Suspense } from "react"
+import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,6 +30,8 @@ interface TournamentPublic {
   status: string
   golfers: Golfer[]
   entryCount: number
+  groupId: string | null
+  groupName: string | null
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -40,8 +42,11 @@ const TYPE_LABEL: Record<string, string> = {
   THE_OPEN: "The Open Championship",
 }
 
-export default function EnterMajorsPage() {
+function EnterMajorsInner() {
   const params = useParams()
+  const searchParams = useSearchParams()
+  const groupId = searchParams.get("group")
+
   const [tournament, setTournament] = useState<TournamentPublic | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -56,12 +61,15 @@ export default function EnterMajorsPage() {
   const [tiebreaker, setTiebreaker] = useState("")
 
   useEffect(() => {
-    fetch(`/api/majors/${params.id}/public`)
+    const url = groupId
+      ? `/api/majors/${params.id}/public?group=${groupId}`
+      : `/api/majors/${params.id}/public`
+    fetch(url)
       .then((r) => r.json())
       .then((d) => setTournament(d.tournament))
       .catch(() => setError("Failed to load tournament"))
       .finally(() => setLoading(false))
-  }, [params.id])
+  }, [params.id, groupId])
 
   if (loading) {
     return (
@@ -101,6 +109,9 @@ export default function EnterMajorsPage() {
   }
 
   if (submitted) {
+    const lbUrl = groupId
+      ? `/majors/${params.id}/leaderboard?group=${groupId}`
+      : `/majors/${params.id}/leaderboard`
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <Card className="w-full max-w-sm">
@@ -110,9 +121,10 @@ export default function EnterMajorsPage() {
             </div>
             <h3 className="text-xl font-bold mb-1">You&apos;re in!</h3>
             <p className="text-muted-foreground text-sm mb-4">
-              Good luck at {tournament.name}. $10 buy-in to {name?.split(" ")[0] ?? "the organiser"}.
+              Good luck at {tournament.name}{tournament.groupName ? ` — ${tournament.groupName}` : ""}.
+              {" "}$10 buy-in to {name?.split(" ")[0] ?? "the organiser"}.
             </p>
-            <Link href={`/majors/${params.id}/leaderboard`}>
+            <Link href={lbUrl}>
               <Button variant="outline" size="sm">View Leaderboard</Button>
             </Link>
           </CardContent>
@@ -150,6 +162,7 @@ export default function EnterMajorsPage() {
           picks,
           winnerPickId: winnerPickId || undefined,
           tiebreaker: tiebreaker ? parseInt(tiebreaker) : undefined,
+          groupId: groupId || undefined,
         }),
       })
 
@@ -170,6 +183,9 @@ export default function EnterMajorsPage() {
         <div className="text-center py-2">
           <p className="text-sm text-muted-foreground">{TYPE_LABEL[tournament.type] ?? tournament.type}</p>
           <h1 className="text-2xl font-bold">{tournament.name}</h1>
+          {tournament.groupName && (
+            <p className="text-base font-medium text-primary mt-0.5">{tournament.groupName}</p>
+          )}
           <div className="flex items-center justify-center gap-3 mt-2 text-sm text-muted-foreground">
             <span>$10 buy-in · best 4 of 6</span>
             <span>·</span>
@@ -363,5 +379,13 @@ export default function EnterMajorsPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function EnterMajorsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>}>
+      <EnterMajorsInner />
+    </Suspense>
   )
 }

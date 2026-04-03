@@ -33,7 +33,7 @@ export async function recalculateStandings(tournamentId: string) {
     })),
   )
 
-  const entryScores: { id: string; totalScore: number | null; tiebreaker: number | null }[] = []
+  const entryScores: { id: string; totalScore: number | null; tiebreaker: number | null; groupId: string | null }[] = []
 
   for (const entry of tournament.entries) {
     const pickedGolfers = entry.picks.map((p) => ({
@@ -66,7 +66,7 @@ export async function recalculateStandings(tournamentId: string) {
       data: { totalScore: total },
     })
 
-    entryScores.push({ id: entry.id, totalScore: total, tiebreaker: entry.tiebreaker })
+    entryScores.push({ id: entry.id, totalScore: total, tiebreaker: entry.tiebreaker, groupId: entry.groupId ?? null })
   }
 
   // Determine actual winner for tiebreaker resolution
@@ -75,10 +75,20 @@ export async function recalculateStandings(tournamentId: string) {
     .sort((a, b) => a.totalScore! - b.totalScore!)[0]
   const winnerScore = winner?.totalScore ?? null
 
-  const ranks = rankEntries(entryScores, winnerScore)
-  await Promise.all(
-    Array.from(ranks.entries()).map(([entryId, rank]) =>
-      prisma.majorsEntry.update({ where: { id: entryId }, data: { rank } }),
-    ),
-  )
+  // Rank within each group independently (entries without a group are ranked together)
+  const byGroup = new Map<string | null, typeof entryScores>()
+  for (const es of entryScores) {
+    const key = es.groupId
+    if (!byGroup.has(key)) byGroup.set(key, [])
+    byGroup.get(key)!.push(es)
+  }
+
+  for (const [, groupEntries] of Array.from(byGroup)) {
+    const ranks = rankEntries(groupEntries, winnerScore)
+    await Promise.all(
+      Array.from(ranks.entries()).map(([entryId, rank]) =>
+        prisma.majorsEntry.update({ where: { id: entryId }, data: { rank } }),
+      ),
+    )
+  }
 }
