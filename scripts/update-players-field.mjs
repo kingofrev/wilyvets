@@ -2,7 +2,7 @@
 import { PrismaClient } from "@prisma/client"
 const prisma = new PrismaClient()
 
-const TOURNAMENT_ID = "cmmmpj0zr000160er901bbufq"
+const TOURNAMENT_ID = "cmmmt3ey30001qbwj21i4voac"
 
 // Actual Players Championship 2026 odds (DraftKings/BetOnline composite, March 12 2026)
 // Keyed by the exact ESPN displayName

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, Suspense } from "react"
 import { useParams, useSearchParams } from "next/navigation"
-import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -444,11 +443,6 @@ function PublicLeaderboardInner() {
           )}
         </div>
 
-        <div className="text-center">
-          <Link href={groupId ? `/majors/${params.id}/enter?group=${groupId}` : `/majors/${params.id}/enter`}>
-            <Button variant="outline" size="sm">Submit Your Entry</Button>
-          </Link>
-        </div>
       </div>
     </div>
   )

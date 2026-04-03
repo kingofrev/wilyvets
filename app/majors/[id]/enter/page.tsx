@@ -176,10 +176,58 @@ function EnterMajorsInner() {
     }
   }
 
+  const isMasters = tournament.type === "MASTERS"
+
   return (
-    <div className="min-h-screen bg-background py-6 px-4">
-      <div className="max-w-lg mx-auto space-y-5">
-        {/* Header */}
+    <div className="min-h-screen bg-background">
+      {/* Masters hero banner */}
+      {isMasters && (
+        <div
+          className="relative overflow-hidden"
+          style={{ background: "linear-gradient(135deg, #004d35 0%, #006747 50%, #005a3c 100%)" }}
+        >
+          {/* Decorative circles */}
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full opacity-10" style={{ background: "#d4af37" }} />
+            <div className="absolute -bottom-8 -left-8 w-36 h-36 rounded-full opacity-10" style={{ background: "#d4af37" }} />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full opacity-5" style={{ background: "#d4af37" }} />
+          </div>
+
+          <div className="relative max-w-lg mx-auto px-4 py-8 text-center">
+            {/* Crest / logo mark */}
+            <div
+              className="inline-flex items-center justify-center w-14 h-14 rounded-full mb-3 shadow-lg"
+              style={{ background: "rgba(212,175,55,0.2)", border: "2px solid rgba(212,175,55,0.5)" }}
+            >
+              <svg viewBox="0 0 24 24" className="w-7 h-7" fill="none">
+                <path d="M12 2L9.5 8.5H3L8 12.5L6 19L12 15L18 19L16 12.5L21 8.5H14.5L12 2Z" fill="#d4af37" />
+              </svg>
+            </div>
+
+            <p className="text-xs font-semibold tracking-widest uppercase mb-1" style={{ color: "rgba(212,175,55,0.8)" }}>
+              Augusta National · {tournament.year}
+            </p>
+            <h1 className="text-3xl font-bold text-white mb-1">The Masters</h1>
+            <p className="text-sm font-medium mb-3" style={{ color: "rgba(255,255,255,0.7)" }}>
+              {tournament.name}
+            </p>
+            {tournament.groupName && (
+              <p className="text-sm font-semibold mb-3" style={{ color: "#d4af37" }}>{tournament.groupName}</p>
+            )}
+            <div className="flex items-center justify-center gap-2 text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>
+              <span>$10 buy-in</span>
+              <span>·</span>
+              <span>best 4 of 6</span>
+              <span>·</span>
+              <span>{tournament.entryCount} {tournament.entryCount === 1 ? "entry" : "entries"} so far</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-lg mx-auto space-y-5 py-6 px-4">
+        {/* Header (non-Masters) */}
+        {!isMasters && (
         <div className="text-center py-2">
           <p className="text-sm text-muted-foreground">{TYPE_LABEL[tournament.type] ?? tournament.type}</p>
           <h1 className="text-2xl font-bold">{tournament.name}</h1>
@@ -192,6 +240,7 @@ function EnterMajorsInner() {
             <span>{tournament.entryCount} {tournament.entryCount === 1 ? "entry" : "entries"} so far</span>
           </div>
         </div>
+        )}
 
         {/* Your Info */}
         <Card>
@@ -216,6 +265,16 @@ function EnterMajorsInner() {
                 placeholder="your@email.com"
               />
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Rules */}
+        <Card className="bg-muted/30">
+          <CardContent className="py-3 text-xs text-muted-foreground space-y-1">
+            <p>• Pick 1 golfer from each of the 6 tiers. Your best 4 scores count.</p>
+            <p>• Missed cut? That golfer gets the worst R3 &amp; R4 score in the field.</p>
+            <p>• Lowest combined score wins the $10 pool. Tiebreaker = closest to winning score.</p>
+            <p>• Separate $5 pick-the-winner side bet (winner take all).</p>
           </CardContent>
         </Card>
 
@@ -343,16 +402,6 @@ function EnterMajorsInner() {
                   : ""}
               </span>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Rules reminder */}
-        <Card className="bg-muted/30">
-          <CardContent className="py-3 text-xs text-muted-foreground space-y-1">
-            <p>• Pick 1 golfer from each of the 6 tiers. Your best 4 scores count.</p>
-            <p>• Missed cut? That golfer gets the worst R3 &amp; R4 score in the field.</p>
-            <p>• Lowest combined score wins the $10 pool. Tiebreaker = closest to winning score.</p>
-            <p>• Separate $5 pick-the-winner side bet (winner take all).</p>
           </CardContent>
         </Card>
 
