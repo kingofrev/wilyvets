@@ -237,10 +237,63 @@ function PublicLeaderboardInner() {
     ? tournament.entries.filter((e) => e.winnerPick?.id === actualWinner.id)
     : []
 
+  const isMasters = tournament.type === "MASTERS"
+
   return (
     <div className="min-h-screen bg-background">
+      {/* Masters hero banner */}
+      {isMasters && (
+        <div
+          className="relative overflow-hidden"
+          style={{ background: "linear-gradient(135deg, #004d35 0%, #006747 50%, #005a3c 100%)" }}
+        >
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full opacity-10" style={{ background: "#d4af37" }} />
+            <div className="absolute -bottom-8 -left-8 w-36 h-36 rounded-full opacity-10" style={{ background: "#d4af37" }} />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full opacity-5" style={{ background: "#d4af37" }} />
+          </div>
+          <div className="relative max-w-lg mx-auto px-4 py-8 text-center">
+            <div
+              className="inline-flex items-center justify-center w-14 h-14 rounded-full mb-3 shadow-lg"
+              style={{ background: "rgba(212,175,55,0.2)", border: "2px solid rgba(212,175,55,0.5)" }}
+            >
+              <svg viewBox="0 0 24 24" className="w-7 h-7" fill="none">
+                <path d="M12 2L9.5 8.5H3L8 12.5L6 19L12 15L18 19L16 12.5L21 8.5H14.5L12 2Z" fill="#d4af37" />
+              </svg>
+            </div>
+            <p className="text-xs font-semibold tracking-widest uppercase mb-1" style={{ color: "rgba(212,175,55,0.8)" }}>
+              Augusta National · {tournament.year}
+            </p>
+            <h1 className="text-3xl font-bold text-white mb-1">The Masters</h1>
+            <p className="text-sm font-medium mb-3" style={{ color: "rgba(255,255,255,0.7)" }}>
+              {tournament.name}
+            </p>
+            {tournament.groupName && (
+              <p className="text-sm font-semibold mb-3" style={{ color: "#d4af37" }}>{tournament.groupName}</p>
+            )}
+            <div className="flex items-center justify-center gap-2">
+              <Badge
+                variant={
+                  tournament.status === "IN_PROGRESS"
+                    ? "default"
+                    : tournament.status === "COMPLETED"
+                      ? "outline"
+                      : "secondary"
+                }
+              >
+                {STATUS_LABEL[tournament.status] ?? tournament.status}
+              </Badge>
+              <span className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
+                {tournament.entryCount} {tournament.entryCount === 1 ? "entry" : "entries"}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
-        {/* Header */}
+        {/* Header (non-Masters) */}
+        {!isMasters && (
         <div className="space-y-1">
           <div className="flex items-center justify-between">
             <div>
@@ -265,6 +318,7 @@ function PublicLeaderboardInner() {
             {tournament.entryCount} {tournament.entryCount === 1 ? "entry" : "entries"}
           </p>
         </div>
+        )}
 
         {/* Winner pick result */}
         {tournament.status === "COMPLETED" && actualWinner && (
