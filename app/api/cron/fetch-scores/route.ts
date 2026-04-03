@@ -17,23 +17,37 @@ function parseScore(val: string | undefined | null): number | null {
 
 const MASTERS_PAR = 72
 
+interface MastersRound {
+  total?: string | null
+  roundStatus?: string   // "Finished" when complete
+}
+
 interface MastersPlayer {
   first_name: string
   last_name: string
   pos: string
   status: string
   topar: string
-  round1?: { total?: string | null }
-  round2?: { total?: string | null }
-  round3?: { total?: string | null }
-  round4?: { total?: string | null }
+  today: string    // current round score to par (live, in progress)
+  thru: string     // holes completed today: "F" = finished, "9" = thru 9, "" = not started
+  round1?: MastersRound
+  round2?: MastersRound
+  round3?: MastersRound
+  round4?: MastersRound
 }
 
-function mastersRoundScore(grossStr: string | null | undefined): number | null {
-  if (!grossStr) return null
-  const n = parseInt(grossStr)
-  if (isNaN(n) || n < 55 || n > 100) return null
-  return n - MASTERS_PAR
+function mastersRoundScore(
+  round: MastersRound | undefined,
+  todayStr: string,
+  isCurrentRound: boolean,
+): number | null {
+  if (round?.roundStatus === "Finished" && round.total) {
+    const n = parseInt(round.total)
+    if (isNaN(n) || n < 55 || n > 100) return null
+    return n - MASTERS_PAR
+  }
+  if (isCurrentRound) return parseScore(todayStr)
+  return null
 }
 
 async function fetchFromMasters(
@@ -50,6 +64,7 @@ async function fetchFromMasters(
 
     const json = await res.json()
     const players: MastersPlayer[] = json?.data?.player ?? []
+    const currentRound = parseInt(json?.data?.currentRound ?? "1")
     if (players.length === 0) return { updated: 0, error: "Masters.com data not available yet" }
 
     const byName = new Map<string, MastersPlayer>()
@@ -63,10 +78,10 @@ async function fetchFromMasters(
       const player = byName.get(golfer.name.toLowerCase().trim())
       if (!player) continue
 
-      const r1 = mastersRoundScore(player.round1?.total)
-      const r2 = mastersRoundScore(player.round2?.total)
-      const r3 = mastersRoundScore(player.round3?.total)
-      const r4 = mastersRoundScore(player.round4?.total)
+      const r1 = mastersRoundScore(player.round1, player.today, currentRound === 1)
+      const r2 = mastersRoundScore(player.round2, player.today, currentRound === 2)
+      const r3 = mastersRoundScore(player.round3, player.today, currentRound === 3)
+      const r4 = mastersRoundScore(player.round4, player.today, currentRound === 4)
       const totalScore = parseScore(player.topar)
       const isCut = player.status === "-1" || player.pos === "MC"
       const isWithdrawn = player.status === "W" || player.pos === "WD"

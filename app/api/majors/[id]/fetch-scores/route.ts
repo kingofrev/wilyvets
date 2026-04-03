@@ -19,26 +19,44 @@ function parseScore(val: string | number | undefined | null): number | null {
 
 const MASTERS_PAR = 72
 
+interface MastersRound {
+  total?: string | null
+  roundStatus?: string   // "Finished" when complete
+}
+
 interface MastersPlayer {
   id: string
   first_name: string
   last_name: string
   pos: string
   status: string   // "-1" = cut, "W" = WD, "D" = DQ, "1" = active
-  topar: string    // score to par: "-10", "E", "+3"
-  round1?: { total?: string | null }
-  round2?: { total?: string | null }
-  round3?: { total?: string | null }
-  round4?: { total?: string | null }
+  topar: string    // cumulative score to par: "-10", "E", "+3"
+  today: string    // current round score to par (live, in progress)
+  thru: string     // holes completed today: "F" = finished, "9" = thru 9, "" = not started
+  round1?: MastersRound
+  round2?: MastersRound
+  round3?: MastersRound
+  round4?: MastersRound
 }
 
-/** Convert gross strokes to score-to-par. Returns null if round not yet played. */
-function mastersRoundScore(grossStr: string | null | undefined): number | null {
-  if (!grossStr) return null
-  const n = parseInt(grossStr)
-  // Sanity check: lowest round ever at Augusta was 62, highest would be ~85
-  if (isNaN(n) || n < 55 || n > 100) return null
-  return n - MASTERS_PAR
+/**
+ * Get a round's score to par.
+ * - If "Finished": convert gross strokes to to-par (gross - 72)
+ * - If this is the current round in progress: use today's live to-par
+ * - Otherwise (not yet played): null
+ */
+function mastersRoundScore(
+  round: MastersRound | undefined,
+  todayStr: string,
+  isCurrentRound: boolean,
+): number | null {
+  if (round?.roundStatus === "Finished" && round.total) {
+    const n = parseInt(round.total)
+    if (isNaN(n) || n < 55 || n > 100) return null
+    return n - MASTERS_PAR
+  }
+  if (isCurrentRound) return parseScore(todayStr)
+  return null
 }
 
 async function fetchFromMasters(
@@ -55,17 +73,15 @@ async function fetchFromMasters(
 
   const json = await res.json()
   const players: MastersPlayer[] = json?.data?.player ?? []
+  const currentRound = parseInt(json?.data?.currentRound ?? "1")
 
   if (players.length === 0) throw new Error("Masters.com data not available yet — tournament may not have started")
 
   // Build lookup by full name (lowercase)
   const byName = new Map<string, MastersPlayer>()
   for (const p of players) {
-    const full = `${p.first_name} ${p.last_name}`.toLowerCase().trim()
-    byName.set(full, p)
-    // Also index by "Last, First" in case names were stored that way
-    const reversed = `${p.last_name}, ${p.first_name}`.toLowerCase().trim()
-    byName.set(reversed, p)
+    byName.set(`${p.first_name} ${p.last_name}`.toLowerCase().trim(), p)
+    byName.set(`${p.last_name}, ${p.first_name}`.toLowerCase().trim(), p)
   }
 
   let updated = 0
@@ -73,16 +89,14 @@ async function fetchFromMasters(
     const player = byName.get(golfer.name.toLowerCase().trim())
     if (!player) continue
 
-    const r1 = mastersRoundScore(player.round1?.total)
-    const r2 = mastersRoundScore(player.round2?.total)
-    const r3 = mastersRoundScore(player.round3?.total)
-    const r4 = mastersRoundScore(player.round4?.total)
+    const r1 = mastersRoundScore(player.round1, player.today, currentRound === 1)
+    const r2 = mastersRoundScore(player.round2, player.today, currentRound === 2)
+    const r3 = mastersRoundScore(player.round3, player.today, currentRound === 3)
+    const r4 = mastersRoundScore(player.round4, player.today, currentRound === 4)
     const totalScore = parseScore(player.topar)
 
     const isCut = player.status === "-1" || player.pos === "MC"
     const isWithdrawn = player.status === "W" || player.pos === "WD"
-
-    // pos is already in display format: "1", "T3", "MC", "WD", "DQ"
     const position = player.pos || null
 
     await prisma.majorsGolfer.update({
