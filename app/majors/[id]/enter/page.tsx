@@ -64,6 +64,10 @@ function EnterMajorsInner() {
   const [winnerPickId, setWinnerPickId] = useState("")
   const [tiebreaker, setTiebreaker] = useState("")
 
+  const lbUrl = groupId
+    ? `/majors/${params.id}/leaderboard?group=${groupId}`
+    : `/majors/${params.id}/leaderboard`
+
   useEffect(() => {
     const url = groupId
       ? `/api/majors/${params.id}/public?group=${groupId}`
@@ -74,6 +78,13 @@ function EnterMajorsInner() {
       .catch(() => setError("Failed to load tournament"))
       .finally(() => setLoading(false))
   }, [params.id, groupId])
+
+  useEffect(() => {
+    if (!submitted) return
+    if (countdown === 0) { router.push(lbUrl); return }
+    const t = setTimeout(() => setCountdown((c) => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [submitted, countdown])
 
   if (loading) {
     return (
@@ -111,17 +122,6 @@ function EnterMajorsInner() {
       </div>
     )
   }
-
-  const lbUrl = groupId
-    ? `/majors/${params.id}/leaderboard?group=${groupId}`
-    : `/majors/${params.id}/leaderboard`
-
-  useEffect(() => {
-    if (!submitted) return
-    if (countdown === 0) { router.push(lbUrl); return }
-    const t = setTimeout(() => setCountdown((c) => c - 1), 1000)
-    return () => clearTimeout(t)
-  }, [submitted, countdown])
 
   if (submitted) {
     return (
