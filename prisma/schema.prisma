@@ -309,6 +309,8 @@ model MajorsTournament {
   espnLeague      String                 @default("pga") // "pga", "masters"
   espnEventId     String?
 
+  buyIn           Int                    @default(10)
+
   // The Odds API config
   oddsApiSportKey String?
 

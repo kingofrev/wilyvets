@@ -40,10 +40,16 @@ export async function POST(request: Request) {
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const body = await request.json()
-  const { name, type, year, espnEventId } = body
+  const { name, type, year, espnEventId, buyIn } = body
 
   if (!name || !type || !year) {
     return NextResponse.json({ error: "name, type and year are required" }, { status: 400 })
+  }
+
+  const VALID_BUY_INS = [10, 20, 50, 100]
+  const parsedBuyIn = buyIn ? parseInt(buyIn) : 10
+  if (!VALID_BUY_INS.includes(parsedBuyIn)) {
+    return NextResponse.json({ error: "Invalid buy-in amount" }, { status: 400 })
   }
 
   const tournamentType = type as MajorsTournamentType
@@ -53,6 +59,7 @@ export async function POST(request: Request) {
       name,
       type: tournamentType,
       year: parseInt(year),
+      buyIn: parsedBuyIn,
       espnLeague: DEFAULT_ESPN_LEAGUES[tournamentType],
       espnEventId: espnEventId || null,
       oddsApiSportKey: DEFAULT_ODDS_KEYS[tournamentType],

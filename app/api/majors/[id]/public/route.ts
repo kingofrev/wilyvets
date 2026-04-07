@@ -37,6 +37,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
       type: tournament.type,
       year: tournament.year,
       status: tournament.status,
+      buyIn: tournament.buyIn,
       golfers: tournament.golfers,
       entryCount: tournament.entries.length,
       entries: tournament.entries,

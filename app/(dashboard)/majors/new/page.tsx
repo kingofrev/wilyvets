@@ -26,6 +26,7 @@ export default function NewMajorsPage() {
   const [name, setName] = useState("")
   const [type, setType] = useState("")
   const [year, setYear] = useState(new Date().getFullYear().toString())
+  const [buyIn, setBuyIn] = useState("10")
   const [espnEventId, setEspnEventId] = useState("")
 
   function handleTypeChange(value: string) {
@@ -51,7 +52,7 @@ export default function NewMajorsPage() {
       const res = await fetch("/api/majors", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, type, year, espnEventId: espnEventId || undefined }),
+        body: JSON.stringify({ name, type, year, buyIn, espnEventId: espnEventId || undefined }),
       })
       if (!res.ok) throw new Error((await res.json()).error)
       const { tournament } = await res.json()
@@ -78,7 +79,7 @@ export default function NewMajorsPage() {
         </Link>
         <div>
           <h2 className="text-2xl font-bold">New Majors Pool</h2>
-          <p className="text-muted-foreground">$10 buy-in · best 4 of 6 picks count</p>
+          <p className="text-muted-foreground">Best 4 of 6 picks count</p>
         </div>
       </div>
 
@@ -116,6 +117,21 @@ export default function NewMajorsPage() {
           <div className="space-y-2">
             <Label>Pool Name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. 2025 Masters" />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Buy-in per person</Label>
+            <Select value={buyIn} onValueChange={setBuyIn}>
+              <SelectTrigger className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">$10</SelectItem>
+                <SelectItem value="20">$20</SelectItem>
+                <SelectItem value="50">$50</SelectItem>
+                <SelectItem value="100">$100</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>

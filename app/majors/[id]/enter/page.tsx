@@ -28,6 +28,7 @@ interface TournamentPublic {
   type: string
   year: number
   status: string
+  buyIn: number
   golfers: Golfer[]
   entryCount: number
   groupId: string | null
@@ -132,7 +133,7 @@ function EnterMajorsInner() {
             <h3 className="text-xl font-bold mb-1">You&apos;re in!</h3>
             <p className="text-muted-foreground text-sm mb-4">
               Good luck at {tournament.name}{tournament.groupName ? ` — ${tournament.groupName}` : ""}.
-              {" "}$10 buy-in to {name?.split(" ")[0] ?? "the organiser"}.
+              {" "}${tournament.buyIn} buy-in to {name?.split(" ")[0] ?? "the organiser"}.
             </p>
             <Link href={lbUrl}>
               <Button className="w-full" size="lg">View Leaderboard</Button>
@@ -226,7 +227,7 @@ function EnterMajorsInner() {
               <p className="text-sm font-semibold mb-3" style={{ color: "#d4af37" }}>{tournament.groupName}</p>
             )}
             <div className="flex items-center justify-center gap-2 text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>
-              <span>$10 buy-in</span>
+              <span>${tournament.buyIn} buy-in</span>
               <span>·</span>
               <span>best 4 of 6</span>
               <span>·</span>
@@ -246,7 +247,7 @@ function EnterMajorsInner() {
             <p className="text-base font-medium text-primary mt-0.5">{tournament.groupName}</p>
           )}
           <div className="flex items-center justify-center gap-3 mt-2 text-sm text-muted-foreground">
-            <span>$10 buy-in · best 4 of 6</span>
+            <span>${tournament.buyIn} buy-in · best 4 of 6</span>
             <span>·</span>
             <span>{tournament.entryCount} {tournament.entryCount === 1 ? "entry" : "entries"} so far</span>
           </div>
@@ -284,8 +285,8 @@ function EnterMajorsInner() {
           <CardContent className="py-3 text-xs text-muted-foreground space-y-1">
             <p>• Pick 1 golfer from each of the 6 tiers. Your best 4 scores count.</p>
             <p>• Missed cut? That golfer gets the worst R3 &amp; R4 score in the field.</p>
-            <p>• Lowest combined score wins the $10 pool. Tiebreaker = closest to winning score.</p>
-            <p>• Separate $5 pick-the-winner side bet (winner take all).</p>
+            <p>• Lowest combined score wins the ${tournament.buyIn} pool. Tiebreaker = closest to winning score.</p>
+            <p>• Separate ${tournament.buyIn / 2} pick-the-winner side bet (winner take all).</p>
           </CardContent>
         </Card>
 
@@ -347,7 +348,7 @@ function EnterMajorsInner() {
               Pick the Winner
             </CardTitle>
             <CardDescription>
-              $5 side bet · winner take all · optional but recommended
+              ${tournament.buyIn / 2} side bet · winner take all · optional but recommended
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -357,7 +358,7 @@ function EnterMajorsInner() {
                 className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm border transition-colors
                   ${!winnerPickId ? "border-primary bg-primary/5 font-medium" : "border-border hover:bg-muted/50"}`}
               >
-                <span className="text-muted-foreground">No pick (skip $5 side bet)</span>
+                <span className="text-muted-foreground">No pick (skip ${tournament.buyIn / 2} side bet)</span>
               </button>
               {tournament.golfers
                 .sort((a, b) => a.odds - b.odds)
