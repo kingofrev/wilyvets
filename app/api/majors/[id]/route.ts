@@ -40,7 +40,17 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   }
 
   const body = await request.json()
-  const { status, espnEventId, espnLeague, oddsApiSportKey } = body
+  const { status, espnEventId, espnLeague, oddsApiSportKey, buyIn, payoutStructure } = body
+
+  const VALID_BUY_INS = [10, 20, 50, 100]
+  const VALID_PAYOUTS = ["WINNER_TAKE_ALL", "TOP_THREE"]
+
+  if (buyIn !== undefined && !VALID_BUY_INS.includes(parseInt(buyIn))) {
+    return NextResponse.json({ error: "Invalid buy-in amount" }, { status: 400 })
+  }
+  if (payoutStructure !== undefined && !VALID_PAYOUTS.includes(payoutStructure)) {
+    return NextResponse.json({ error: "Invalid payout structure" }, { status: 400 })
+  }
 
   const updated = await prisma.majorsTournament.update({
     where: { id: params.id },
@@ -49,6 +59,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       ...(espnEventId !== undefined && { espnEventId }),
       ...(espnLeague !== undefined && { espnLeague }),
       ...(oddsApiSportKey !== undefined && { oddsApiSportKey }),
+      ...(buyIn !== undefined && { buyIn: parseInt(buyIn) }),
+      ...(payoutStructure !== undefined && { payoutStructure }),
     },
   })
 

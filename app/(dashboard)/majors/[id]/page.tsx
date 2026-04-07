@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/use-toast"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   ArrowLeft,
   RefreshCw,
@@ -68,6 +69,8 @@ interface Tournament {
   type: string
   year: number
   status: "UPCOMING" | "IN_PROGRESS" | "COMPLETED"
+  buyIn: number
+  payoutStructure: string
   espnLeague: string
   espnEventId: string | null
   oddsApiSportKey: string | null
@@ -103,6 +106,7 @@ export default function MajorsTournamentPage() {
   const [activeTab, setActiveTab] = useState<"leaderboard" | "field">("leaderboard")
   const [newGroupName, setNewGroupName] = useState("")
   const [creatingGroup, setCreatingGroup] = useState(false)
+  const [savingSettings, setSavingSettings] = useState(false)
 
   const load = useCallback(async () => {
     const [tRes, gRes] = await Promise.all([
@@ -169,6 +173,23 @@ export default function MajorsTournamentPage() {
       body: JSON.stringify({ status }),
     })
     load()
+  }
+
+  async function saveSetting(field: "buyIn" | "payoutStructure", value: string) {
+    setSavingSettings(true)
+    try {
+      await fetch(`/api/majors/${params.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      })
+      load()
+      toast({ title: "Settings saved" })
+    } catch {
+      toast({ title: "Error", description: "Failed to save settings", variant: "destructive" })
+    } finally {
+      setSavingSettings(false)
+    }
   }
 
   async function createGroup() {
@@ -324,6 +345,49 @@ export default function MajorsTournamentPage() {
         </CardContent>
       </Card>
 
+      {/* Pool Settings */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Pool Settings</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm w-32 shrink-0">Buy-in per person</span>
+            <Select
+              value={String(tournament.buyIn)}
+              onValueChange={(v) => saveSetting("buyIn", v)}
+              disabled={savingSettings}
+            >
+              <SelectTrigger className="w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">$10</SelectItem>
+                <SelectItem value="20">$20</SelectItem>
+                <SelectItem value="50">$50</SelectItem>
+                <SelectItem value="100">$100</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm w-32 shrink-0">Payout structure</span>
+            <Select
+              value={tournament.payoutStructure}
+              onValueChange={(v) => saveSetting("payoutStructure", v)}
+              disabled={savingSettings}
+            >
+              <SelectTrigger className="flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="WINNER_TAKE_ALL">Winner take all</SelectItem>
+                <SelectItem value="TOP_THREE">Top 3 — 60% / 30% / 10%</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Groups */}
       <Card>
         <CardHeader className="pb-2">
@@ -412,7 +476,7 @@ export default function MajorsTournamentPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">
                 <Trophy className="h-4 w-4 inline mr-1.5 text-yellow-500" />
-                Pick the Winner — ${tournament.entries.length * 5} pot
+                Pick the Winner — ${tournament.entries.length * (tournament.buyIn / 2)} pot
               </CardTitle>
             </CardHeader>
             <CardContent>
