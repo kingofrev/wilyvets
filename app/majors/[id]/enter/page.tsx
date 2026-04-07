@@ -29,6 +29,7 @@ interface TournamentPublic {
   year: number
   status: string
   buyIn: number
+  payoutStructure: string
   golfers: Golfer[]
   entryCount: number
   groupId: string | null
@@ -285,7 +286,10 @@ function EnterMajorsInner() {
           <CardContent className="py-3 text-xs text-muted-foreground space-y-1">
             <p>• Pick 1 golfer from each of the 6 tiers. Your best 4 scores count.</p>
             <p>• Missed cut? That golfer gets the worst R3 &amp; R4 score in the field.</p>
-            <p>• Lowest combined score wins the ${tournament.buyIn} pool. Tiebreaker = closest to winning score.</p>
+            {tournament.payoutStructure === "TOP_THREE"
+              ? <p>• Top 3 share the ${tournament.buyIn} pool: 1st 60% · 2nd 30% · 3rd 10%. Tiebreaker = closest to winning score.</p>
+              : <p>• Lowest combined score wins the ${tournament.buyIn} pool. Tiebreaker = closest to winning score.</p>
+            }
             <p>• Separate ${tournament.buyIn / 2} pick-the-winner side bet (winner take all).</p>
           </CardContent>
         </Card>

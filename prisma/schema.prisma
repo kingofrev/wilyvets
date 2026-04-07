@@ -298,6 +298,11 @@ enum MajorsTournamentStatus {
   COMPLETED     // Final results
 }
 
+enum MajorsPayoutStructure {
+  WINNER_TAKE_ALL
+  TOP_THREE
+}
+
 model MajorsTournament {
   id              String                 @id @default(cuid())
   name            String
@@ -310,6 +315,7 @@ model MajorsTournament {
   espnEventId     String?
 
   buyIn           Int                    @default(10)
+  payoutStructure MajorsPayoutStructure  @default(WINNER_TAKE_ALL)
 
   // The Odds API config
   oddsApiSportKey String?

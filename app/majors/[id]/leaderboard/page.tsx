@@ -42,6 +42,8 @@ interface Tournament {
   type: string
   year: number
   status: string
+  buyIn: number
+  payoutStructure: string
   entries: Entry[]
   golfers: Golfer[]
   entryCount: number
@@ -285,6 +287,8 @@ function PublicLeaderboardInner() {
               </Badge>
               <span className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
                 {tournament.entryCount} {tournament.entryCount === 1 ? "entry" : "entries"}
+                {" · "}${tournament.buyIn} buy-in
+                {" · "}{tournament.payoutStructure === "TOP_THREE" ? "Top 3 paid (60/30/10)" : "Winner take all"}
               </span>
             </div>
           </div>
@@ -316,6 +320,8 @@ function PublicLeaderboardInner() {
           </div>
           <p className="text-sm text-muted-foreground">
             {tournament.entryCount} {tournament.entryCount === 1 ? "entry" : "entries"}
+            {" · "}${tournament.buyIn} buy-in
+            {" · "}{tournament.payoutStructure === "TOP_THREE" ? "Top 3 paid (60/30/10)" : "Winner take all"}
           </p>
         </div>
         )}

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { MajorsTournamentType } from "@prisma/client"
+import { MajorsTournamentType, MajorsPayoutStructure } from "@prisma/client"
 
 const DEFAULT_ODDS_KEYS: Record<MajorsTournamentType, string> = {
   PLAYERS_CHAMPIONSHIP: "", // Not available on The Odds API — seed manually
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const body = await request.json()
-  const { name, type, year, espnEventId, buyIn } = body
+  const { name, type, year, espnEventId, buyIn, payoutStructure } = body
 
   if (!name || !type || !year) {
     return NextResponse.json({ error: "name, type and year are required" }, { status: 400 })
@@ -53,6 +53,10 @@ export async function POST(request: Request) {
   }
 
   const tournamentType = type as MajorsTournamentType
+  const validPayouts: MajorsPayoutStructure[] = ["WINNER_TAKE_ALL", "TOP_THREE"]
+  const parsedPayout: MajorsPayoutStructure = validPayouts.includes(payoutStructure)
+    ? payoutStructure
+    : "WINNER_TAKE_ALL"
 
   const tournament = await prisma.majorsTournament.create({
     data: {
@@ -60,6 +64,7 @@ export async function POST(request: Request) {
       type: tournamentType,
       year: parseInt(year),
       buyIn: parsedBuyIn,
+      payoutStructure: parsedPayout,
       espnLeague: DEFAULT_ESPN_LEAGUES[tournamentType],
       espnEventId: espnEventId || null,
       oddsApiSportKey: DEFAULT_ODDS_KEYS[tournamentType],

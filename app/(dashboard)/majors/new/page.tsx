@@ -27,6 +27,7 @@ export default function NewMajorsPage() {
   const [type, setType] = useState("")
   const [year, setYear] = useState(new Date().getFullYear().toString())
   const [buyIn, setBuyIn] = useState("10")
+  const [payoutStructure, setPayoutStructure] = useState("WINNER_TAKE_ALL")
   const [espnEventId, setEspnEventId] = useState("")
 
   function handleTypeChange(value: string) {
@@ -52,7 +53,7 @@ export default function NewMajorsPage() {
       const res = await fetch("/api/majors", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, type, year, buyIn, espnEventId: espnEventId || undefined }),
+        body: JSON.stringify({ name, type, year, buyIn, payoutStructure, espnEventId: espnEventId || undefined }),
       })
       if (!res.ok) throw new Error((await res.json()).error)
       const { tournament } = await res.json()
@@ -130,6 +131,19 @@ export default function NewMajorsPage() {
                 <SelectItem value="20">$20</SelectItem>
                 <SelectItem value="50">$50</SelectItem>
                 <SelectItem value="100">$100</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Payout structure</Label>
+            <Select value={payoutStructure} onValueChange={setPayoutStructure}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="WINNER_TAKE_ALL">Winner take all</SelectItem>
+                <SelectItem value="TOP_THREE">Top 3 — 60% / 30% / 10%</SelectItem>
               </SelectContent>
             </Select>
           </div>
