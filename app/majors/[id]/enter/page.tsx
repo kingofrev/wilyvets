@@ -29,6 +29,7 @@ interface TournamentPublic {
   year: number
   status: string
   buyIn: number
+  sideBetAmount: number
   payoutStructure: string
   golfers: Golfer[]
   entryCount: number
@@ -290,7 +291,7 @@ function EnterMajorsInner() {
               ? <p>• Top 3 share the ${tournament.buyIn} pool: 1st 60% · 2nd 30% · 3rd 10%. Tiebreaker = closest to winning score.</p>
               : <p>• Lowest combined score wins the ${tournament.buyIn} pool. Tiebreaker = closest to winning score.</p>
             }
-            <p>• Separate ${tournament.buyIn / 2} pick-the-winner side bet (winner take all).</p>
+            <p>• Separate ${tournament.sideBetAmount} pick-the-winner side bet (winner take all).</p>
           </CardContent>
         </Card>
 
@@ -352,7 +353,7 @@ function EnterMajorsInner() {
               Pick the Winner
             </CardTitle>
             <CardDescription>
-              ${tournament.buyIn / 2} side bet · winner take all · optional but recommended
+              ${tournament.sideBetAmount} side bet · winner take all · optional but recommended
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -362,7 +363,7 @@ function EnterMajorsInner() {
                 className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm border transition-colors
                   ${!winnerPickId ? "border-primary bg-primary/5 font-medium" : "border-border hover:bg-muted/50"}`}
               >
-                <span className="text-muted-foreground">No pick (skip ${tournament.buyIn / 2} side bet)</span>
+                <span className="text-muted-foreground">No pick (skip ${tournament.sideBetAmount} side bet)</span>
               </button>
               {tournament.golfers
                 .sort((a, b) => a.odds - b.odds)

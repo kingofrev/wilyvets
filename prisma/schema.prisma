@@ -315,6 +315,7 @@ model MajorsTournament {
   espnEventId     String?
 
   buyIn           Int                    @default(10)
+  sideBetAmount   Int                    @default(20)
   payoutStructure MajorsPayoutStructure  @default(WINNER_TAKE_ALL)
 
   // The Odds API config

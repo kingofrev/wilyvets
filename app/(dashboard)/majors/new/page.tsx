@@ -27,6 +27,7 @@ export default function NewMajorsPage() {
   const [type, setType] = useState("")
   const [year, setYear] = useState(new Date().getFullYear().toString())
   const [buyIn, setBuyIn] = useState("10")
+  const [sideBetAmount, setSideBetAmount] = useState("20")
   const [payoutStructure, setPayoutStructure] = useState("WINNER_TAKE_ALL")
   const [espnEventId, setEspnEventId] = useState("")
 
@@ -53,7 +54,7 @@ export default function NewMajorsPage() {
       const res = await fetch("/api/majors", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, type, year, buyIn, payoutStructure, espnEventId: espnEventId || undefined }),
+        body: JSON.stringify({ name, type, year, buyIn, sideBetAmount, payoutStructure, espnEventId: espnEventId || undefined }),
       })
       if (!res.ok) throw new Error((await res.json()).error)
       const { tournament } = await res.json()
@@ -129,8 +130,26 @@ export default function NewMajorsPage() {
               <SelectContent>
                 <SelectItem value="10">$10</SelectItem>
                 <SelectItem value="20">$20</SelectItem>
+                <SelectItem value="40">$40</SelectItem>
                 <SelectItem value="50">$50</SelectItem>
+                <SelectItem value="75">$75</SelectItem>
                 <SelectItem value="100">$100</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Pick the Winner side bet</Label>
+            <Select value={sideBetAmount} onValueChange={setSideBetAmount}>
+              <SelectTrigger className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">$5</SelectItem>
+                <SelectItem value="10">$10</SelectItem>
+                <SelectItem value="20">$20</SelectItem>
+                <SelectItem value="25">$25</SelectItem>
+                <SelectItem value="50">$50</SelectItem>
               </SelectContent>
             </Select>
           </div>

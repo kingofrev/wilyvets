@@ -70,6 +70,7 @@ interface Tournament {
   year: number
   status: "UPCOMING" | "IN_PROGRESS" | "COMPLETED"
   buyIn: number
+  sideBetAmount: number
   payoutStructure: string
   espnLeague: string
   espnEventId: string | null
@@ -175,7 +176,7 @@ export default function MajorsTournamentPage() {
     load()
   }
 
-  async function saveSetting(field: "buyIn" | "payoutStructure", value: string) {
+  async function saveSetting(field: "buyIn" | "sideBetAmount" | "payoutStructure", value: string) {
     setSavingSettings(true)
     try {
       await fetch(`/api/majors/${params.id}`, {
@@ -364,8 +365,29 @@ export default function MajorsTournamentPage() {
               <SelectContent>
                 <SelectItem value="10">$10</SelectItem>
                 <SelectItem value="20">$20</SelectItem>
+                <SelectItem value="40">$40</SelectItem>
                 <SelectItem value="50">$50</SelectItem>
+                <SelectItem value="75">$75</SelectItem>
                 <SelectItem value="100">$100</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm w-32 shrink-0">Pick the Winner bet</span>
+            <Select
+              value={String(tournament.sideBetAmount)}
+              onValueChange={(v) => saveSetting("sideBetAmount", v)}
+              disabled={savingSettings}
+            >
+              <SelectTrigger className="w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">$5</SelectItem>
+                <SelectItem value="10">$10</SelectItem>
+                <SelectItem value="20">$20</SelectItem>
+                <SelectItem value="25">$25</SelectItem>
+                <SelectItem value="50">$50</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -476,7 +498,7 @@ export default function MajorsTournamentPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">
                 <Trophy className="h-4 w-4 inline mr-1.5 text-yellow-500" />
-                Pick the Winner — ${tournament.entries.length * (tournament.buyIn / 2)} pot
+                Pick the Winner — ${tournament.entries.length * tournament.sideBetAmount} pot
               </CardTitle>
             </CardHeader>
             <CardContent>
