@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, Suspense } from "react"
-import { useParams, useSearchParams } from "next/navigation"
+import { useParams, useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -51,7 +51,9 @@ function EnterMajorsInner() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [countdown, setCountdown] = useState(3)
   const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
 
   // Form state
   const [name, setName] = useState("")
@@ -108,10 +110,18 @@ function EnterMajorsInner() {
     )
   }
 
+  const lbUrl = groupId
+    ? `/majors/${params.id}/leaderboard?group=${groupId}`
+    : `/majors/${params.id}/leaderboard`
+
+  useEffect(() => {
+    if (!submitted) return
+    if (countdown === 0) { router.push(lbUrl); return }
+    const t = setTimeout(() => setCountdown((c) => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [submitted, countdown])
+
   if (submitted) {
-    const lbUrl = groupId
-      ? `/majors/${params.id}/leaderboard?group=${groupId}`
-      : `/majors/${params.id}/leaderboard`
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <Card className="w-full max-w-sm">
@@ -125,8 +135,9 @@ function EnterMajorsInner() {
               {" "}$10 buy-in to {name?.split(" ")[0] ?? "the organiser"}.
             </p>
             <Link href={lbUrl}>
-              <Button variant="outline" size="sm">View Leaderboard</Button>
+              <Button className="w-full" size="lg">View Leaderboard</Button>
             </Link>
+            <p className="text-xs text-muted-foreground mt-3">Redirecting in {countdown}s…</p>
           </CardContent>
         </Card>
       </div>
