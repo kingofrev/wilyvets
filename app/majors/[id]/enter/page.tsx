@@ -288,10 +288,11 @@ function EnterMajorsInner() {
             <p>• Pick 1 golfer from each of the 6 tiers. Your best 4 scores count.</p>
             <p>• Missed cut? That golfer gets the worst R3 &amp; R4 score in the field.</p>
             {tournament.payoutStructure === "TOP_THREE"
-              ? <p>• Top 3 share the ${tournament.buyIn} pool: 1st 60% · 2nd 30% · 3rd 10%. Tiebreaker = closest to winning score.</p>
-              : <p>• Lowest combined score wins the ${tournament.buyIn} pool. Tiebreaker = closest to winning score.</p>
+              ? <p>• Top 3 share the ${tournament.buyIn} pool: 1st 60% · 2nd 30% · 3rd 10%.</p>
+              : <p>• Lowest combined score wins the ${tournament.buyIn} pool.</p>
             }
             <p>• Separate ${tournament.sideBetAmount} pick-the-winner side bet (winner take all).</p>
+            <p>• Tiebreaker: closest predicted winning score — breaks ties in both the pool and the pick-the-winner side bet.</p>
           </CardContent>
         </Card>
 
@@ -396,8 +397,7 @@ function EnterMajorsInner() {
           <CardHeader>
             <CardTitle className="text-base">Tiebreaker</CardTitle>
             <CardDescription>
-              Predict the winning score (strokes relative to par). Closest prediction wins a
-              tie. Enter negative for under par (e.g. -15).
+              Predict the winning score (strokes relative to par). Closest prediction breaks ties in both the pool and the pick-the-winner side bet. Enter negative for under par (e.g. -15).
             </CardDescription>
           </CardHeader>
           <CardContent>

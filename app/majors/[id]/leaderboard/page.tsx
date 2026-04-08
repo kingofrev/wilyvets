@@ -235,9 +235,22 @@ function PublicLeaderboardInner() {
           .sort((a, b) => (a.totalScore ?? 0) - (b.totalScore ?? 0))[0]
       : null
 
-  const winnerPickWinners = actualWinner
+  const winnerPickCorrect = actualWinner
     ? tournament.entries.filter((e) => e.winnerPick?.id === actualWinner.id)
     : []
+
+  // Apply tiebreaker to the winner pick side bet
+  const winnerPickWinners = (() => {
+    if (winnerPickCorrect.length <= 1) return winnerPickCorrect
+    const winnerScore = actualWinner?.totalScore ?? null
+    if (winnerScore === null) return winnerPickCorrect
+    const withDist = winnerPickCorrect.map((e) => ({
+      entry: e,
+      dist: e.tiebreaker !== null ? Math.abs(e.tiebreaker - winnerScore) : Infinity,
+    }))
+    const best = Math.min(...withDist.map((x) => x.dist))
+    return withDist.filter((x) => x.dist === best).map((x) => x.entry)
+  })()
 
   const isMasters = tournament.type === "MASTERS"
 
@@ -340,10 +353,15 @@ function PublicLeaderboardInner() {
                 Winner: {actualWinner.name} ({formatScore(actualWinner.totalScore)})
               </p>
               {winnerPickWinners.length > 0 ? (
-                <p className="text-green-600 font-medium">
-                  {winnerPickWinners.map((e) => e.entrantName).join(", ")}{" "}
-                  {winnerPickWinners.length === 1 ? "wins" : "split"} the pot!
-                </p>
+                <>
+                  <p className="text-green-600 font-medium">
+                    {winnerPickWinners.map((e) => e.entrantName).join(", ")}{" "}
+                    {winnerPickWinners.length === 1 ? "wins" : "split"} the pot!
+                  </p>
+                  {winnerPickCorrect.length > winnerPickWinners.length && (
+                    <p className="text-xs text-muted-foreground">Decided by tiebreaker (closest predicted winning score)</p>
+                  )}
+                </>
               ) : (
                 <p className="text-muted-foreground">No one picked the winner.</p>
               )}

@@ -252,9 +252,21 @@ export default function MajorsTournamentPage() {
     .filter((g) => !g.isCut && !g.isWithdrawn && g.totalScore !== null)
     .sort((a, b) => (a.totalScore ?? 0) - (b.totalScore ?? 0))[0]
 
-  const winnerPickWinners = actualWinner
+  const winnerPickCorrect = actualWinner
     ? tournament.entries.filter((e) => e.winnerPick?.id === actualWinner.id)
     : []
+
+  const winnerPickWinners = (() => {
+    if (winnerPickCorrect.length <= 1) return winnerPickCorrect
+    const winnerScore = actualWinner?.totalScore ?? null
+    if (winnerScore === null) return winnerPickCorrect
+    const withDist = winnerPickCorrect.map((e) => ({
+      entry: e,
+      dist: e.tiebreaker !== null ? Math.abs(e.tiebreaker - winnerScore) : Infinity,
+    }))
+    const best = Math.min(...withDist.map((x) => x.dist))
+    return withDist.filter((x) => x.dist === best).map((x) => x.entry)
+  })()
 
   const baseUrl = typeof window !== "undefined" ? window.location.origin : ""
 
@@ -508,10 +520,15 @@ export default function MajorsTournamentPage() {
                     Winner: {actualWinner.name} ({formatScore(actualWinner.totalScore)})
                   </p>
                   {winnerPickWinners.length > 0 ? (
-                    <p className="text-sm text-green-600 font-medium">
-                      {winnerPickWinners.map((e) => e.entrantName).join(", ")}{" "}
-                      {winnerPickWinners.length === 1 ? "wins" : "split"} the pot!
-                    </p>
+                    <>
+                      <p className="text-sm text-green-600 font-medium">
+                        {winnerPickWinners.map((e) => e.entrantName).join(", ")}{" "}
+                        {winnerPickWinners.length === 1 ? "wins" : "split"} the pot!
+                      </p>
+                      {winnerPickCorrect.length > winnerPickWinners.length && (
+                        <p className="text-xs text-muted-foreground">Decided by tiebreaker</p>
+                      )}
+                    </>
                   ) : (
                     <p className="text-sm text-muted-foreground">No one picked the winner.</p>
                   )}
