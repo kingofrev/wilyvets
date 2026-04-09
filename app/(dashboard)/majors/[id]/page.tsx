@@ -665,11 +665,13 @@ export default function MajorsTournamentPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {actualWinner && (
+                <p className="text-sm font-medium mb-2">
+                  {tournament.status === "COMPLETED" ? "Winner" : "Current Leader"}: {actualWinner.name} ({formatScore(actualWinner.totalScore)})
+                </p>
+              )}
               {actualWinner && tournament.status === "COMPLETED" ? (
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">
-                    Winner: {actualWinner.name} ({formatScore(actualWinner.totalScore)})
-                  </p>
                   {winnerPickWinners.length > 0 ? (
                     <>
                       <p className="text-sm text-green-600 font-medium">

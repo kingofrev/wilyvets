@@ -228,25 +228,25 @@ function PublicLeaderboardInner() {
     return 0
   })
 
-  const actualWinner =
-    tournament.status === "COMPLETED"
-      ? tournament.golfers
-          .filter((g) => !g.isCut && !g.isWithdrawn && g.totalScore !== null)
-          .sort((a, b) => (a.totalScore ?? 0) - (b.totalScore ?? 0))[0]
-      : null
+  const isCompleted = tournament.status === "COMPLETED"
 
-  const winnerPickCorrect = actualWinner
-    ? tournament.entries.filter((e) => e.winnerPick?.id === actualWinner.id)
+  // Current leader during IN_PROGRESS, or final winner when COMPLETED
+  const actualLeader = tournament.golfers
+    .filter((g) => !g.isCut && !g.isWithdrawn && g.totalScore !== null)
+    .sort((a, b) => (a.totalScore ?? 0) - (b.totalScore ?? 0))[0] ?? null
+
+  const winnerPickCorrect = actualLeader
+    ? tournament.entries.filter((e) => e.winnerPick?.id === actualLeader.id)
     : []
 
   // Apply tiebreaker to the winner pick side bet
   const winnerPickWinners = (() => {
     if (winnerPickCorrect.length <= 1) return winnerPickCorrect
-    const winnerScore = actualWinner?.totalScore ?? null
-    if (winnerScore === null) return winnerPickCorrect
+    const leaderScore = actualLeader?.totalScore ?? null
+    if (leaderScore === null) return winnerPickCorrect
     const withDist = winnerPickCorrect.map((e) => ({
       entry: e,
-      dist: e.tiebreaker !== null ? Math.abs(e.tiebreaker - winnerScore) : Infinity,
+      dist: e.tiebreaker !== null ? Math.abs(e.tiebreaker - leaderScore) : Infinity,
     }))
     const best = Math.min(...withDist.map((x) => x.dist))
     return withDist.filter((x) => x.dist === best).map((x) => x.entry)
@@ -340,7 +340,7 @@ function PublicLeaderboardInner() {
         )}
 
         {/* Winner pick result */}
-        {tournament.status === "COMPLETED" && actualWinner && (
+        {(tournament.status === "IN_PROGRESS" || tournament.status === "COMPLETED") && actualLeader && (
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">
@@ -350,20 +350,24 @@ function PublicLeaderboardInner() {
             </CardHeader>
             <CardContent className="text-sm space-y-1">
               <p className="font-medium">
-                Winner: {actualWinner.name} ({formatScore(actualWinner.totalScore)})
+                {isCompleted ? "Winner" : "Current Leader"}: {actualLeader.name} ({formatScore(actualLeader.totalScore)})
               </p>
               {winnerPickWinners.length > 0 ? (
                 <>
-                  <p className="text-green-600 font-medium">
+                  <p className={isCompleted ? "text-green-600 font-medium" : "text-muted-foreground"}>
                     {winnerPickWinners.map((e) => e.entrantName).join(", ")}{" "}
-                    {winnerPickWinners.length === 1 ? "wins" : "split"} the pot!
+                    {isCompleted
+                      ? (winnerPickWinners.length === 1 ? "wins the pot!" : "split the pot!")
+                      : (winnerPickWinners.length === 1 ? "has the current leader" : "have the current leader")}
                   </p>
                   {winnerPickCorrect.length > winnerPickWinners.length && (
                     <p className="text-xs text-muted-foreground">Decided by tiebreaker (closest predicted winning score)</p>
                   )}
                 </>
               ) : (
-                <p className="text-muted-foreground">No one picked the winner.</p>
+                <p className="text-muted-foreground">
+                  {isCompleted ? "No one picked the winner." : "No one has picked the current leader."}
+                </p>
               )}
             </CardContent>
           </Card>
