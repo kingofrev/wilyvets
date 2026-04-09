@@ -22,6 +22,8 @@ import {
   Users,
   ExternalLink,
   Trash2,
+  Pencil,
+  X,
 } from "lucide-react"
 import { formatScore, tierLabel } from "@/lib/games/majors"
 
@@ -108,6 +110,11 @@ export default function MajorsTournamentPage() {
   const [newGroupName, setNewGroupName] = useState("")
   const [creatingGroup, setCreatingGroup] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null)
+  const [editPicks, setEditPicks] = useState<Record<number, string>>({}) // tier → golferId
+  const [editTiebreaker, setEditTiebreaker] = useState("")
+  const [editWinnerPickId, setEditWinnerPickId] = useState("")
+  const [savingEntry, setSavingEntry] = useState(false)
 
   const load = useCallback(async () => {
     const [tRes, gRes] = await Promise.all([
@@ -190,6 +197,43 @@ export default function MajorsTournamentPage() {
       toast({ title: "Error", description: "Failed to save settings", variant: "destructive" })
     } finally {
       setSavingSettings(false)
+    }
+  }
+
+  function startEditEntry(entry: Entry) {
+    const picks: Record<number, string> = {}
+    for (const pick of entry.picks) picks[pick.tier] = pick.golfer.id
+    setEditPicks(picks)
+    setEditTiebreaker(entry.tiebreaker !== null ? String(entry.tiebreaker) : "")
+    setEditWinnerPickId(entry.winnerPick?.id ?? "")
+    setEditingEntryId(entry.id)
+  }
+
+  async function saveEntry(entryId: string) {
+    setSavingEntry(true)
+    try {
+      const picks = Object.entries(editPicks).map(([tier, golferId]) => ({
+        tier: parseInt(tier),
+        golferId,
+      }))
+      const res = await fetch(`/api/majors/${params.id}/entries/${entryId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          picks,
+          tiebreaker: editTiebreaker !== "" ? parseInt(editTiebreaker) : null,
+          winnerPickId: editWinnerPickId || null,
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error)
+      setEditingEntryId(null)
+      load()
+      toast({ title: "Entry updated" })
+    } catch (err) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to save", variant: "destructive" })
+    } finally {
+      setSavingEntry(false)
     }
   }
 
@@ -577,12 +621,13 @@ export default function MajorsTournamentPage() {
             </Card>
           )}
           {sortedEntries.map((entry) => {
+            const isEditing = editingEntryId === entry.id
             const isExpanded = expandedEntry === entry.id
             return (
               <Card key={entry.id} className="overflow-hidden">
                 <button
                   className="w-full text-left"
-                  onClick={() => setExpandedEntry(isExpanded ? null : entry.id)}
+                  onClick={() => !isEditing && setExpandedEntry(isExpanded ? null : entry.id)}
                 >
                   <CardContent className="py-3">
                     <div className="flex items-center justify-between">
@@ -602,6 +647,13 @@ export default function MajorsTournamentPage() {
                         <span className="text-lg font-semibold">
                           <ScoreCell score={entry.totalScore} />
                         </span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); isEditing ? setEditingEntryId(null) : startEditEntry(entry) }}
+                          className="p-1 rounded hover:bg-muted transition-colors"
+                          title={isEditing ? "Cancel edit" : "Edit entry"}
+                        >
+                          {isEditing ? <X className="h-4 w-4 text-muted-foreground" /> : <Pencil className="h-3.5 w-3.5 text-muted-foreground" />}
+                        </button>
                         {isExpanded ? (
                           <ChevronUp className="h-4 w-4 text-muted-foreground" />
                         ) : (
@@ -612,7 +664,78 @@ export default function MajorsTournamentPage() {
                   </CardContent>
                 </button>
 
-                {isExpanded && (
+                {isEditing && (
+                  <div className="border-t bg-muted/20 p-3 space-y-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Edit Entry</p>
+                    {[1, 2, 3, 4, 5, 6].map((tier) => (
+                      <div key={tier} className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground w-14 shrink-0">{`Tier ${tier}`}</span>
+                        <Select
+                          value={editPicks[tier] ?? ""}
+                          onValueChange={(v) => setEditPicks((prev) => ({ ...prev, [tier]: v }))}
+                        >
+                          <SelectTrigger className="flex-1 h-8 text-xs">
+                            <SelectValue placeholder="Pick a golfer..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {tournament.golfers
+                              .filter((g) => g.tier === tier)
+                              .sort((a, b) => a.odds - b.odds)
+                              .map((g) => (
+                                <SelectItem key={g.id} value={g.id} className="text-xs">
+                                  {g.name}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground w-14 shrink-0">Tiebreaker</span>
+                      <Input
+                        type="number"
+                        value={editTiebreaker}
+                        onChange={(e) => setEditTiebreaker(e.target.value)}
+                        placeholder="e.g. -15"
+                        className="w-28 h-8 text-xs"
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        {editTiebreaker === "" ? "" : editTiebreaker === "0" ? "E" : parseInt(editTiebreaker) < 0 ? `${Math.abs(parseInt(editTiebreaker))} under` : `+${editTiebreaker}`}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground w-14 shrink-0">Winner pick</span>
+                      <Select
+                        value={editWinnerPickId}
+                        onValueChange={setEditWinnerPickId}
+                      >
+                        <SelectTrigger className="flex-1 h-8 text-xs">
+                          <SelectValue placeholder="No pick" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="" className="text-xs">No pick</SelectItem>
+                          {tournament.golfers
+                            .sort((a, b) => a.odds - b.odds)
+                            .map((g) => (
+                              <SelectItem key={g.id} value={g.id} className="text-xs">
+                                {g.name} (+{g.odds})
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => saveEntry(entry.id)}
+                      disabled={savingEntry || Object.keys(editPicks).length !== 6}
+                      className="w-full"
+                    >
+                      {savingEntry ? "Saving..." : "Save Changes"}
+                    </Button>
+                  </div>
+                )}
+
+                {!isEditing && isExpanded && (
                   <div className="border-t bg-muted/20">
                     <table className="w-full text-sm">
                       <thead>

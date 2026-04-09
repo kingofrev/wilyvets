@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ChevronDown, ChevronUp, Trophy, Send, MessageCircle, X } from "lucide-react"
+import { Minus, Plus, Trophy, Send, MessageCircle, X } from "lucide-react"
 import { formatScore } from "@/lib/games/majors"
 
 interface Golfer {
@@ -145,7 +145,7 @@ function PublicLeaderboardInner() {
 
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [loading, setLoading] = useState(true)
-  const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
+  const [collapsedEntries, setCollapsedEntries] = useState<Set<string>>(new Set())
 
   // Chat state
   const [messages, setMessages] = useState<Message[]>([])
@@ -379,12 +379,17 @@ function PublicLeaderboardInner() {
             </Card>
           ) : (
             sortedEntries.map((entry) => {
-              const isExpanded = expandedEntry === entry.id
+              const isExpanded = !collapsedEntries.has(entry.id)
               return (
                 <Card key={entry.id} className="overflow-hidden">
                   <button
                     className="w-full text-left"
-                    onClick={() => setExpandedEntry(isExpanded ? null : entry.id)}
+                    onClick={() => setCollapsedEntries((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(entry.id)) next.delete(entry.id)
+                      else next.add(entry.id)
+                      return next
+                    })}
                   >
                     <CardContent className="py-3">
                       <div className="flex items-center justify-between">
@@ -405,9 +410,9 @@ function PublicLeaderboardInner() {
                             <ScoreCell score={entry.totalScore} />
                           </span>
                           {isExpanded ? (
-                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                            <Minus className="h-4 w-4 text-muted-foreground" />
                           ) : (
-                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                            <Plus className="h-4 w-4 text-muted-foreground" />
                           )}
                         </div>
                       </div>
