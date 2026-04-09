@@ -411,7 +411,7 @@ export default function MajorsTournamentPage() {
           <div className="flex items-center gap-3">
             <span className="text-sm w-32 shrink-0">Buy-in per person</span>
             <Select
-              value={String(tournament.buyIn)}
+              value={String(tournament.buyIn ?? 10)}
               onValueChange={(v) => saveSetting("buyIn", v)}
               disabled={savingSettings}
             >
@@ -431,7 +431,7 @@ export default function MajorsTournamentPage() {
           <div className="flex items-center gap-3">
             <span className="text-sm w-32 shrink-0">Pick the Winner bet</span>
             <Select
-              value={String(tournament.sideBetAmount)}
+              value={String(tournament.sideBetAmount ?? 20)}
               onValueChange={(v) => saveSetting("sideBetAmount", v)}
               disabled={savingSettings}
             >
@@ -450,7 +450,7 @@ export default function MajorsTournamentPage() {
           <div className="flex items-center gap-3">
             <span className="text-sm w-32 shrink-0">Payout structure</span>
             <Select
-              value={tournament.payoutStructure}
+              value={tournament.payoutStructure ?? "WINNER_TAKE_ALL"}
               onValueChange={(v) => saveSetting("payoutStructure", v)}
               disabled={savingSettings}
             >
@@ -554,7 +554,7 @@ export default function MajorsTournamentPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">
                 <Trophy className="h-4 w-4 inline mr-1.5 text-yellow-500" />
-                Pick the Winner — ${tournament.entries.length * tournament.sideBetAmount} pot
+                Pick the Winner — ${tournament.entries.length * (tournament.sideBetAmount ?? 20)} pot
               </CardTitle>
             </CardHeader>
             <CardContent>
