@@ -145,7 +145,7 @@ function PublicLeaderboardInner() {
 
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [loading, setLoading] = useState(true)
-  const [collapsedEntries, setCollapsedEntries] = useState<Set<string>>(new Set())
+  const [collapsedEntries, setCollapsedEntries] = useState<Record<string, boolean>>({})
 
   // Chat state
   const [messages, setMessages] = useState<Message[]>([])
@@ -379,17 +379,12 @@ function PublicLeaderboardInner() {
             </Card>
           ) : (
             sortedEntries.map((entry) => {
-              const isExpanded = !collapsedEntries.has(entry.id)
+              const isExpanded = !collapsedEntries[entry.id]
               return (
                 <Card key={entry.id} className="overflow-hidden">
                   <button
                     className="w-full text-left"
-                    onClick={() => setCollapsedEntries((prev) => {
-                      const next = new Set(prev)
-                      if (next.has(entry.id)) next.delete(entry.id)
-                      else next.add(entry.id)
-                      return next
-                    })}
+                    onClick={() => setCollapsedEntries((prev) => ({ ...prev, [entry.id]: !prev[entry.id] }))}
                   >
                     <CardContent className="py-3">
                       <div className="flex items-center justify-between">
