@@ -389,27 +389,27 @@ function PublicLeaderboardInner() {
                     <CardContent className="py-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <span className="text-lg font-bold text-muted-foreground w-6 text-center">
-                            {entry.rank ?? "-"}
-                          </span>
+                          {isExpanded ? (
+                            <Minus className="h-4 w-4 text-muted-foreground shrink-0" />
+                          ) : (
+                            <Plus className="h-4 w-4 text-muted-foreground shrink-0" />
+                          )}
                           <div>
-                            <p className="font-medium">{entry.entrantName}</p>
+                            <p className="font-medium">
+                              {entry.rank !== null && (
+                                <span className="text-muted-foreground font-bold mr-1.5">{entry.rank}.</span>
+                              )}
+                              {entry.entrantName}
+                            </p>
                             <p className="text-xs text-muted-foreground">
                               TB: {entry.tiebreaker !== null ? formatScore(entry.tiebreaker) : "-"}
                               {entry.winnerPick && ` · Winner: ${entry.winnerPick.name}`}
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg font-semibold">
-                            <ScoreCell score={entry.totalScore} />
-                          </span>
-                          {isExpanded ? (
-                            <Minus className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <Plus className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </div>
+                        <span className="text-lg font-semibold">
+                          <ScoreCell score={entry.totalScore} />
+                        </span>
                       </div>
                     </CardContent>
                   </button>
