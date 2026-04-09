@@ -625,44 +625,48 @@ export default function MajorsTournamentPage() {
             const isExpanded = expandedEntry === entry.id
             return (
               <Card key={entry.id} className="overflow-hidden">
-                <button
-                  className="w-full text-left"
-                  onClick={() => !isEditing && setExpandedEntry(isExpanded ? null : entry.id)}
-                >
-                  <CardContent className="py-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="text-lg font-bold text-muted-foreground w-6 text-center">
-                          {entry.rank ?? "-"}
-                        </span>
-                        <div>
-                          <p className="font-medium">{entry.entrantName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            TB: {entry.tiebreaker !== null ? formatScore(entry.tiebreaker) : "-"}
-                            {entry.winnerPick && ` · Winner: ${entry.winnerPick.name}`}
-                          </p>
+                <div className="flex items-center">
+                  {/* Toggle area */}
+                  <button
+                    className="flex-1 text-left"
+                    onClick={() => !isEditing && setExpandedEntry(isExpanded ? null : entry.id)}
+                  >
+                    <CardContent className="py-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="text-lg font-bold text-muted-foreground w-6 text-center">
+                            {entry.rank ?? "-"}
+                          </span>
+                          <div>
+                            <p className="font-medium">{entry.entrantName}</p>
+                            <p className="text-xs text-muted-foreground">
+                              TB: {entry.tiebreaker !== null ? formatScore(entry.tiebreaker) : "-"}
+                              {entry.winnerPick && ` · Winner: ${entry.winnerPick.name}`}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg font-semibold">
+                            <ScoreCell score={entry.totalScore} />
+                          </span>
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg font-semibold">
-                          <ScoreCell score={entry.totalScore} />
-                        </span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); isEditing ? setEditingEntryId(null) : startEditEntry(entry) }}
-                          className="p-1 rounded hover:bg-muted transition-colors"
-                          title={isEditing ? "Cancel edit" : "Edit entry"}
-                        >
-                          {isEditing ? <X className="h-4 w-4 text-muted-foreground" /> : <Pencil className="h-3.5 w-3.5 text-muted-foreground" />}
-                        </button>
-                        {isExpanded ? (
-                          <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </button>
+                    </CardContent>
+                  </button>
+                  {/* Edit button — sibling, not nested */}
+                  <button
+                    onClick={() => isEditing ? setEditingEntryId(null) : startEditEntry(entry)}
+                    className="px-3 py-3 hover:bg-muted transition-colors self-stretch flex items-center border-l"
+                    title={isEditing ? "Cancel edit" : "Edit entry"}
+                  >
+                    {isEditing ? <X className="h-4 w-4 text-muted-foreground" /> : <Pencil className="h-3.5 w-3.5 text-muted-foreground" />}
+                  </button>
+                </div>
 
                 {isEditing && (
                   <div className="border-t bg-muted/20 p-3 space-y-3">
