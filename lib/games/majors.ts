@@ -51,24 +51,31 @@ export function getWorstScores(golfers: GolferScore[]): { worstR3: number; worst
 }
 
 // Effective total score for a single golfer.
-// Missed-cut players use the worst R3/R4 in the field for those rounds.
+// Active players use totalScore (live cumulative from the API) so in-progress
+// rounds are included. Missed-cut players use worst R3/R4 as a penalty.
 export function getEffectiveTotalScore(
   golfer: GolferScore,
   worstR3: number,
   worstR4: number,
 ): number | null {
+  if (golfer.isCut || golfer.isWithdrawn) {
+    // Apply worst-round penalty for R3/R4
+    const r1 = golfer.r1Score
+    const r2 = golfer.r2Score
+    if (r1 === null) return null
+    if (r2 === null) return r1
+    return r1 + r2 + worstR3 + worstR4
+  }
+
+  // For active golfers, totalScore is the live cumulative to-par (includes
+  // any in-progress round). Fall back to summing completed rounds if not posted yet.
+  if (golfer.totalScore !== null) return golfer.totalScore
+
   const r1 = golfer.r1Score
+  if (r1 === null) return null
   const r2 = golfer.r2Score
-
-  if (r1 === null) return null   // R1 not yet posted
-  if (r2 === null) return r1     // Only R1 done
-
-  const r3 = golfer.isCut ? worstR3 : golfer.r3Score
-  const r4 = golfer.isCut ? worstR4 : golfer.r4Score
-
-  if (r3 === null) return r1 + r2
-  if (r4 === null) return r1 + r2 + r3
-  return r1 + r2 + r3 + r4
+  if (r2 === null) return r1
+  return r1 + r2
 }
 
 // Calculate entry score: sum of the best 4 of 6 golfer effective totals.
