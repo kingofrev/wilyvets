@@ -16,6 +16,7 @@ interface Golfer {
   odds: number
   totalScore: number | null
   position: string | null
+  thru: string | null
   isCut: boolean
   isWithdrawn: boolean
 }
@@ -427,6 +428,7 @@ function PublicLeaderboardInner() {
                             <th className="px-3 py-1.5 text-left">Golfer</th>
                             <th className="px-3 py-1.5 text-right">Pos</th>
                             <th className="px-3 py-1.5 text-right">Score</th>
+                            <th className="px-3 py-1.5 text-right">Thru</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -451,6 +453,9 @@ function PublicLeaderboardInner() {
                                 </td>
                                 <td className="px-3 py-1.5 text-right">
                                   <ScoreCell score={pick.golfer.totalScore} />
+                                </td>
+                                <td className="px-3 py-1.5 text-right text-xs text-muted-foreground">
+                                  {pick.golfer.thru ?? "-"}
                                 </td>
                               </tr>
                             ))}

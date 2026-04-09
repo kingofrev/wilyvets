@@ -377,6 +377,7 @@ model MajorsGolfer {
   r4Score      Int?
   totalScore   Int?             // Strokes relative to par, total
   position     String?          // "T3", "1", "CUT", "WD"
+  thru         String?          // holes played today: "F" = finished, "9" = thru 9, null = not started
   isCut        Boolean          @default(false)
   isWithdrawn  Boolean          @default(false)
 

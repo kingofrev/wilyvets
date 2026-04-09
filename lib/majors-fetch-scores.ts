@@ -88,10 +88,11 @@ export async function fetchFromMasters(
     const isCut = player.status === "-1" || player.pos === "MC"
     const isWithdrawn = player.status === "W" || player.pos === "WD"
     const position = player.pos || null
+    const thru = player.thru === "F" ? "F" : player.thru ? player.thru : null
 
     await prisma.majorsGolfer.update({
       where: { id: golfer.id },
-      data: { r1Score: r1, r2Score: r2, r3Score: r3, r4Score: r4, totalScore, position, isCut, isWithdrawn },
+      data: { r1Score: r1, r2Score: r2, r3Score: r3, r4Score: r4, totalScore, position, thru, isCut, isWithdrawn },
     })
     updated++
   }
@@ -107,6 +108,7 @@ interface ESPNCompetitor {
   athlete?: { id: string; displayName: string }
   score?: string
   linescores?: { displayValue?: string }[]
+  status?: { thru?: number; displayValue?: string }
 }
 
 function extractCompetitors(data: unknown): ESPNCompetitor[] {
@@ -169,10 +171,12 @@ export async function fetchFromESPN(
     let position: string | null = comp.order != null ? String(comp.order) : null
     if (isCut) position = "CUT"
     if (isWithdrawn) position = "WD"
+    const thruNum = comp.status?.thru
+    const thru = thruNum != null ? (thruNum === 18 ? "F" : String(thruNum)) : null
 
     await prisma.majorsGolfer.update({
       where: { id: golfer.id },
-      data: { r1Score: r1, r2Score: r2, r3Score: r3, r4Score: r4, totalScore, position, isCut, isWithdrawn },
+      data: { r1Score: r1, r2Score: r2, r3Score: r3, r4Score: r4, totalScore, position, thru, isCut, isWithdrawn },
     })
     updated++
   }
