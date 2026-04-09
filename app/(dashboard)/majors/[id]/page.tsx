@@ -24,6 +24,7 @@ import {
   Trash2,
   Pencil,
   X,
+  Settings,
 } from "lucide-react"
 import { formatScore, tierLabel } from "@/lib/games/majors"
 
@@ -62,6 +63,9 @@ interface Entry {
 interface Group {
   id: string
   name: string
+  buyIn: number | null
+  sideBetAmount: number | null
+  payoutStructure: string | null
   _count: { entries: number }
 }
 
@@ -115,6 +119,8 @@ export default function MajorsTournamentPage() {
   const [editTiebreaker, setEditTiebreaker] = useState("")
   const [editWinnerPickId, setEditWinnerPickId] = useState("")
   const [savingEntry, setSavingEntry] = useState(false)
+  const [groupSettingsId, setGroupSettingsId] = useState<string | null>(null)
+  const [savingGroupSettings, setSavingGroupSettings] = useState(false)
 
   const load = useCallback(async () => {
     const [tRes, gRes] = await Promise.all([
@@ -197,6 +203,29 @@ export default function MajorsTournamentPage() {
       toast({ title: "Error", description: "Failed to save settings", variant: "destructive" })
     } finally {
       setSavingSettings(false)
+    }
+  }
+
+  async function saveGroupSetting(
+    groupId: string,
+    field: "buyIn" | "sideBetAmount" | "payoutStructure",
+    value: string,
+  ) {
+    setSavingGroupSettings(true)
+    try {
+      const res = await fetch(`/api/majors/${params.id}/groups?groupId=${groupId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error)
+      setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, ...d.group } : g)))
+      toast({ title: "Group settings saved" })
+    } catch {
+      toast({ title: "Error", description: "Failed to save group settings", variant: "destructive" })
+    } finally {
+      setSavingGroupSettings(false)
     }
   }
 
@@ -498,47 +527,125 @@ export default function MajorsTournamentPage() {
               {groups.map((group) => {
                 const entryUrl = `${baseUrl}/majors/${params.id}/enter?group=${group.id}`
                 const lbUrl = `${baseUrl}/majors/${params.id}/leaderboard?group=${group.id}`
+                const showingSettings = groupSettingsId === group.id
+                // Effective values: group overrides > tournament defaults
+                const effectiveBuyIn = group.buyIn ?? tournament.buyIn ?? 10
+                const effectiveSideBet = group.sideBetAmount ?? tournament.sideBetAmount ?? 20
+                const effectivePayout = group.payoutStructure ?? tournament.payoutStructure ?? "WINNER_TAKE_ALL"
                 return (
-                  <div
-                    key={group.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <span className="text-sm font-medium truncate">{group.name}</span>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {group._count.entries} {group._count.entries === 1 ? "entry" : "entries"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 px-2 text-xs"
-                        onClick={() => copyLink(entryUrl, `entry-${group.id}`)}
-                      >
-                        {copied === `entry-${group.id}` ? (
-                          <Check className="h-3 w-3 mr-1" />
-                        ) : (
-                          <Share2 className="h-3 w-3 mr-1" />
-                        )}
-                        {copied === `entry-${group.id}` ? "Copied!" : "Share"}
-                      </Button>
-                      <Link href={lbUrl} target="_blank">
-                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs">
-                          <ExternalLink className="h-3 w-3 mr-1" />
-                          Board
+                  <div key={group.id} className="rounded-lg border overflow-hidden">
+                    <div className="flex items-center justify-between gap-2 px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-sm font-medium truncate">{group.name}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {group._count.entries} {group._count.entries === 1 ? "entry" : "entries"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => copyLink(entryUrl, `entry-${group.id}`)}
+                        >
+                          {copied === `entry-${group.id}` ? (
+                            <Check className="h-3 w-3 mr-1" />
+                          ) : (
+                            <Share2 className="h-3 w-3 mr-1" />
+                          )}
+                          {copied === `entry-${group.id}` ? "Copied!" : "Share"}
                         </Button>
-                      </Link>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 px-2 text-destructive hover:text-destructive"
-                        onClick={() => deleteGroup(group.id, group.name)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                        <Link href={lbUrl} target="_blank">
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs">
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            Board
+                          </Button>
+                        </Link>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className={`h-7 px-2 ${showingSettings ? "text-primary" : "text-muted-foreground"}`}
+                          onClick={() => setGroupSettingsId(showingSettings ? null : group.id)}
+                          title="Group settings"
+                        >
+                          <Settings className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-destructive hover:text-destructive"
+                          onClick={() => deleteGroup(group.id, group.name)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
+                    {showingSettings && (
+                      <div className="border-t bg-muted/20 px-3 py-3 space-y-2">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Group Settings
+                          {(group.buyIn == null && group.sideBetAmount == null && group.payoutStructure == null) && (
+                            <span className="ml-2 font-normal normal-case">— using pool defaults</span>
+                          )}
+                        </p>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-muted-foreground w-32 shrink-0">Buy-in per person</span>
+                          <Select
+                            value={String(effectiveBuyIn)}
+                            onValueChange={(v) => saveGroupSetting(group.id, "buyIn", v)}
+                            disabled={savingGroupSettings}
+                          >
+                            <SelectTrigger className="w-28 h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="10">$10</SelectItem>
+                              <SelectItem value="20">$20</SelectItem>
+                              <SelectItem value="40">$40</SelectItem>
+                              <SelectItem value="50">$50</SelectItem>
+                              <SelectItem value="75">$75</SelectItem>
+                              <SelectItem value="100">$100</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-muted-foreground w-32 shrink-0">Pick the Winner bet</span>
+                          <Select
+                            value={String(effectiveSideBet)}
+                            onValueChange={(v) => saveGroupSetting(group.id, "sideBetAmount", v)}
+                            disabled={savingGroupSettings}
+                          >
+                            <SelectTrigger className="w-28 h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="5">$5</SelectItem>
+                              <SelectItem value="10">$10</SelectItem>
+                              <SelectItem value="20">$20</SelectItem>
+                              <SelectItem value="25">$25</SelectItem>
+                              <SelectItem value="50">$50</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-muted-foreground w-32 shrink-0">Payout structure</span>
+                          <Select
+                            value={effectivePayout}
+                            onValueChange={(v) => saveGroupSetting(group.id, "payoutStructure", v)}
+                            disabled={savingGroupSettings}
+                          >
+                            <SelectTrigger className="flex-1 h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="WINNER_TAKE_ALL">Winner take all</SelectItem>
+                              <SelectItem value="TOP_THREE">Top 3 — 60% / 30% / 10%</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )
               })}

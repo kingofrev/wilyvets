@@ -23,11 +23,18 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
   if (!tournament) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-  // If a group was requested, fetch its name
+  // If a group was requested, fetch its name and settings
   let groupName: string | null = null
+  let buyIn = tournament.buyIn
+  let sideBetAmount = tournament.sideBetAmount
+  let payoutStructure: string = tournament.payoutStructure
   if (groupId) {
     const group = await prisma.majorsGroup.findUnique({ where: { id: groupId } })
     groupName = group?.name ?? null
+    // Override with group-level settings where set
+    if (group?.buyIn != null) buyIn = group.buyIn
+    if (group?.sideBetAmount != null) sideBetAmount = group.sideBetAmount
+    if (group?.payoutStructure != null) payoutStructure = group.payoutStructure
   }
 
   return NextResponse.json({
@@ -37,9 +44,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
       type: tournament.type,
       year: tournament.year,
       status: tournament.status,
-      buyIn: tournament.buyIn,
-      sideBetAmount: tournament.sideBetAmount,
-      payoutStructure: tournament.payoutStructure,
+      buyIn,
+      sideBetAmount,
+      payoutStructure,
       golfers: tournament.golfers,
       entryCount: tournament.entries.length,
       entries: tournament.entries,

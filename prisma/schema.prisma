@@ -337,13 +337,18 @@ model MajorsTournament {
 }
 
 model MajorsGroup {
-  id           String           @id @default(cuid())
-  tournamentId String
-  tournament   MajorsTournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  name         String
-  createdAt    DateTime         @default(now())
+  id              String                 @id @default(cuid())
+  tournamentId    String
+  tournament      MajorsTournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  name            String
+  createdAt       DateTime               @default(now())
 
-  entries      MajorsEntry[]
+  // Optional overrides — null means inherit from tournament
+  buyIn           Int?
+  sideBetAmount   Int?
+  payoutStructure MajorsPayoutStructure?
+
+  entries         MajorsEntry[]
 }
 
 model MajorsMessage {
