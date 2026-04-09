@@ -205,7 +205,7 @@ export default function MajorsTournamentPage() {
     for (const pick of entry.picks) picks[pick.tier] = pick.golfer.id
     setEditPicks(picks)
     setEditTiebreaker(entry.tiebreaker !== null ? String(entry.tiebreaker) : "")
-    setEditWinnerPickId(entry.winnerPick?.id ?? "")
+    setEditWinnerPickId(entry.winnerPick?.id ?? "none")
     setEditingEntryId(entry.id)
   }
 
@@ -222,7 +222,7 @@ export default function MajorsTournamentPage() {
         body: JSON.stringify({
           picks,
           tiebreaker: editTiebreaker !== "" ? parseInt(editTiebreaker) : null,
-          winnerPickId: editWinnerPickId || null,
+          winnerPickId: editWinnerPickId === "none" ? null : editWinnerPickId || null,
         }),
       })
       const d = await res.json()
@@ -675,7 +675,7 @@ export default function MajorsTournamentPage() {
                       <div key={tier} className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground w-14 shrink-0">{`Tier ${tier}`}</span>
                         <Select
-                          value={editPicks[tier] ?? ""}
+                          value={editPicks[tier] ?? undefined}
                           onValueChange={(v) => setEditPicks((prev) => ({ ...prev, [tier]: v }))}
                         >
                           <SelectTrigger className="flex-1 h-8 text-xs">
@@ -717,7 +717,7 @@ export default function MajorsTournamentPage() {
                           <SelectValue placeholder="No pick" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="" className="text-xs">No pick</SelectItem>
+                          <SelectItem value="none" className="text-xs">No pick</SelectItem>
                           {tournament.golfers
                             .sort((a, b) => a.odds - b.odds)
                             .map((g) => (
