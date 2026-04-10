@@ -1,13 +1,23 @@
 import { prisma } from "@/lib/prisma"
 
-// Normalize names for fuzzy matching: lowercase, trim, strip diacritics
-// e.g. "Ludvig Åberg" → "ludvig aberg", "Søren Kjeldsen" → "soren kjeldsen"
+// Normalize names for fuzzy matching: lowercase, strip diacritics, remove periods
 function normalizeName(name: string): string {
   return name
     .toLowerCase()
     .trim()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\u0300-\u036f]/g, "") // strip combining diacritics (å→a, ö→o, etc.)
+    .replace(/ø/g, "o")              // ø doesn't decompose via NFD
+    .replace(/ł/g, "l")              // Polish ł
+    .replace(/æ/g, "ae")             // Danish/Norwegian æ
+    .replace(/\./g, "")              // remove periods (J.J. → JJ)
+    .replace(/\s+/g, " ")            // collapse whitespace
+    .trim()
+}
+
+// Compact form: remove all spaces too — matches "J. J. Spaun" to "J.J. Spaun"
+function compactName(name: string): string {
+  return normalizeName(name).replace(/\s/g, "")
 }
 
 // ─── Shared score parser ───────────────────────────────────────────────────────
@@ -79,14 +89,25 @@ export async function fetchFromMasters(
     throw new Error("Masters.com data not available yet — tournament may not have started")
 
   const byName = new Map<string, MastersPlayer>()
+  const byCompact = new Map<string, MastersPlayer>()
+  const byLastName = new Map<string, MastersPlayer | null>() // null = duplicate, don't use
   for (const p of players) {
-    byName.set(normalizeName(`${p.first_name} ${p.last_name}`), p)
+    const full = `${p.first_name} ${p.last_name}`
+    byName.set(normalizeName(full), p)
     byName.set(normalizeName(`${p.last_name}, ${p.first_name}`), p)
+    byCompact.set(compactName(full), p)
+    const last = normalizeName(p.last_name)
+    byLastName.set(last, byLastName.has(last) ? null : p) // null if duplicate last name
   }
 
   let updated = 0
   for (const golfer of golfers) {
-    const player = byName.get(normalizeName(golfer.name))
+    const nameParts = golfer.name.trim().split(/\s+/)
+    const lastName = normalizeName(nameParts[nameParts.length - 1])
+    const player =
+      byName.get(normalizeName(golfer.name)) ??
+      byCompact.get(compactName(golfer.name)) ??
+      (byLastName.get(lastName) ?? undefined) // last-name fallback if unique in field
     if (!player) continue
 
     const r1 = mastersRoundScore(player.round1, player.today, currentRound === 1)
@@ -155,9 +176,13 @@ export async function fetchFromESPN(
   if (competitors.length === 0) throw new Error("No competitor data found in ESPN response")
 
   const byName = new Map<string, ESPNCompetitor>()
+  const byCompact = new Map<string, ESPNCompetitor>()
   const byEspnId = new Map<string, ESPNCompetitor>()
   for (const c of competitors) {
-    if (c.athlete?.displayName) byName.set(normalizeName(c.athlete.displayName), c)
+    if (c.athlete?.displayName) {
+      byName.set(normalizeName(c.athlete.displayName), c)
+      byCompact.set(compactName(c.athlete.displayName), c)
+    }
     if (c.athlete?.id) byEspnId.set(c.athlete.id, c)
   }
 
@@ -165,7 +190,8 @@ export async function fetchFromESPN(
   for (const golfer of golfers) {
     const comp =
       (golfer.espnId ? byEspnId.get(golfer.espnId) : undefined) ??
-      byName.get(normalizeName(golfer.name))
+      byName.get(normalizeName(golfer.name)) ??
+      byCompact.get(compactName(golfer.name))
     if (!comp) continue
 
     const ls = comp.linescores ?? []
