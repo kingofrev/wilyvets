@@ -1,5 +1,15 @@
 import { prisma } from "@/lib/prisma"
 
+// Normalize names for fuzzy matching: lowercase, trim, strip diacritics
+// e.g. "Ludvig Åberg" → "ludvig aberg", "Søren Kjeldsen" → "soren kjeldsen"
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+}
+
 // ─── Shared score parser ───────────────────────────────────────────────────────
 
 export function parseScore(val: string | number | undefined | null): number | null {
@@ -70,13 +80,13 @@ export async function fetchFromMasters(
 
   const byName = new Map<string, MastersPlayer>()
   for (const p of players) {
-    byName.set(`${p.first_name} ${p.last_name}`.toLowerCase().trim(), p)
-    byName.set(`${p.last_name}, ${p.first_name}`.toLowerCase().trim(), p)
+    byName.set(normalizeName(`${p.first_name} ${p.last_name}`), p)
+    byName.set(normalizeName(`${p.last_name}, ${p.first_name}`), p)
   }
 
   let updated = 0
   for (const golfer of golfers) {
-    const player = byName.get(golfer.name.toLowerCase().trim())
+    const player = byName.get(normalizeName(golfer.name))
     if (!player) continue
 
     const r1 = mastersRoundScore(player.round1, player.today, currentRound === 1)
@@ -147,7 +157,7 @@ export async function fetchFromESPN(
   const byName = new Map<string, ESPNCompetitor>()
   const byEspnId = new Map<string, ESPNCompetitor>()
   for (const c of competitors) {
-    if (c.athlete?.displayName) byName.set(c.athlete.displayName.toLowerCase(), c)
+    if (c.athlete?.displayName) byName.set(normalizeName(c.athlete.displayName), c)
     if (c.athlete?.id) byEspnId.set(c.athlete.id, c)
   }
 
@@ -155,7 +165,7 @@ export async function fetchFromESPN(
   for (const golfer of golfers) {
     const comp =
       (golfer.espnId ? byEspnId.get(golfer.espnId) : undefined) ??
-      byName.get(golfer.name.toLowerCase())
+      byName.get(normalizeName(golfer.name))
     if (!comp) continue
 
     const ls = comp.linescores ?? []
