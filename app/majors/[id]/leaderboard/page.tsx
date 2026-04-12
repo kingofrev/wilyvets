@@ -161,10 +161,19 @@ function PublicLeaderboardInner() {
     const url = groupId
       ? `/api/majors/${params.id}/public?group=${groupId}`
       : `/api/majors/${params.id}/public`
-    fetch(url)
-      .then((r) => r.json())
-      .then((d) => setTournament(d.tournament))
-      .finally(() => setLoading(false))
+
+    function fetchTournament() {
+      fetch(url)
+        .then((r) => r.json())
+        .then((d) => setTournament(d.tournament))
+        .finally(() => setLoading(false))
+    }
+
+    fetchTournament()
+
+    // Poll every 60s when tournament is in progress
+    const interval = setInterval(fetchTournament, 60000)
+    return () => clearInterval(interval)
   }, [params.id, groupId])
 
   // Load saved name from localStorage

@@ -83,7 +83,10 @@ export async function fetchFromMasters(
 
   const json = await res.json()
   const players: MastersPlayer[] = json?.data?.player ?? []
-  const currentRound = parseInt(json?.data?.currentRound ?? "1")
+  // Derive current round from statusRound ("FFFP" = rounds 1-3 Finished, 4 in Progress)
+  // Masters API's currentRound field is unreliable (e.g. returns "0001" during round 4)
+  const statusRound: string = json?.data?.statusRound ?? ""
+  const currentRound = statusRound.indexOf("P") >= 0 ? statusRound.indexOf("P") + 1 : parseInt(json?.data?.currentRound ?? "1")
 
   if (players.length === 0)
     throw new Error("Masters.com data not available yet — tournament may not have started")
