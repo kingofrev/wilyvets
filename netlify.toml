@@ -5,6 +5,9 @@
 [functions]
   directory = "netlify/functions"
 
+[functions."fetch-scores-cron"]
+  timeout = 120
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 

@@ -103,7 +103,7 @@ export async function fetchFromMasters(
     byLastName.set(last, byLastName.has(last) ? null : p) // null if duplicate last name
   }
 
-  let updated = 0
+  const updates: Promise<unknown>[] = []
   for (const golfer of golfers) {
     const nameParts = golfer.name.trim().split(/\s+/)
     const lastName = normalizeName(nameParts[nameParts.length - 1])
@@ -124,14 +124,16 @@ export async function fetchFromMasters(
     const position = player.pos || null
     const thru = player.thru === "F" ? "F" : player.thru ? player.thru : null
 
-    await prisma.majorsGolfer.update({
-      where: { id: golfer.id },
-      data: { r1Score: r1, r2Score: r2, r3Score: r3, r4Score: r4, totalScore, position, thru, isCut, isWithdrawn },
-    })
-    updated++
+    updates.push(
+      prisma.majorsGolfer.update({
+        where: { id: golfer.id },
+        data: { r1Score: r1, r2Score: r2, r3Score: r3, r4Score: r4, totalScore, position, thru, isCut, isWithdrawn },
+      }),
+    )
   }
 
-  return { updated }
+  await Promise.all(updates)
+  return { updated: updates.length }
 }
 
 // ─── ESPN ─────────────────────────────────────────────────────────────────────
@@ -189,7 +191,7 @@ export async function fetchFromESPN(
     if (c.athlete?.id) byEspnId.set(c.athlete.id, c)
   }
 
-  let updated = 0
+  const updates: Promise<unknown>[] = []
   for (const golfer of golfers) {
     const comp =
       (golfer.espnId ? byEspnId.get(golfer.espnId) : undefined) ??
@@ -213,12 +215,14 @@ export async function fetchFromESPN(
     const thruNum = comp.status?.thru
     const thru = thruNum != null ? (thruNum === 18 ? "F" : String(thruNum)) : null
 
-    await prisma.majorsGolfer.update({
-      where: { id: golfer.id },
-      data: { r1Score: r1, r2Score: r2, r3Score: r3, r4Score: r4, totalScore, position, thru, isCut, isWithdrawn },
-    })
-    updated++
+    updates.push(
+      prisma.majorsGolfer.update({
+        where: { id: golfer.id },
+        data: { r1Score: r1, r2Score: r2, r3Score: r3, r4Score: r4, totalScore, position, thru, isCut, isWithdrawn },
+      }),
+    )
   }
 
-  return { updated }
+  await Promise.all(updates)
+  return { updated: updates.length }
 }
