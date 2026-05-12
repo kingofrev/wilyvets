@@ -362,21 +362,6 @@ function EnterMajorsInner() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <label
-              className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm border cursor-pointer transition-colors
-                ${skipWinnerPick ? "border-primary bg-primary/5 font-medium" : "border-border hover:bg-muted/50"}`}
-            >
-              <input
-                type="checkbox"
-                checked={skipWinnerPick}
-                onChange={(e) => {
-                  setSkipWinnerPick(e.target.checked)
-                  if (e.target.checked) setWinnerPickId("")
-                }}
-                className="h-4 w-4 accent-primary"
-              />
-              <span>Opt out of the ${tournament.sideBetAmount} side bet</span>
-            </label>
             <div
               className={`space-y-1.5 max-h-64 overflow-y-auto ${skipWinnerPick ? "opacity-50 pointer-events-none" : ""}`}
             >
@@ -406,6 +391,21 @@ function EnterMajorsInner() {
                   )
                 })}
             </div>
+            <label
+              className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm border cursor-pointer transition-colors
+                ${skipWinnerPick ? "border-primary bg-primary/5 font-medium" : "border-border hover:bg-muted/50"}`}
+            >
+              <input
+                type="checkbox"
+                checked={skipWinnerPick}
+                onChange={(e) => {
+                  setSkipWinnerPick(e.target.checked)
+                  if (e.target.checked) setWinnerPickId("")
+                }}
+                className="h-4 w-4 accent-primary"
+              />
+              <span>Opt out of the ${tournament.sideBetAmount} side bet</span>
+            </label>
           </CardContent>
         </Card>
 
