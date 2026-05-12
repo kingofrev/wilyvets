@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Check, Trophy, AlertCircle } from "lucide-react"
+import { Check, Trophy, AlertCircle, Minus, Plus } from "lucide-react"
 import { formatScore, tierLabel } from "@/lib/games/majors"
 
 interface Golfer {
@@ -63,7 +63,8 @@ function EnterMajorsInner() {
   const [email, setEmail] = useState("")
   const [tierPicks, setTierPicks] = useState<Record<number, string>>({}) // tier → golferId
   const [winnerPickId, setWinnerPickId] = useState("")
-  const [tiebreaker, setTiebreaker] = useState("")
+  const [skipWinnerPick, setSkipWinnerPick] = useState(false)
+  const [tiebreaker, setTiebreaker] = useState<number>(-15)
 
   const lbUrl = groupId
     ? `/majors/${params.id}/leaderboard?group=${groupId}`
@@ -157,7 +158,10 @@ function EnterMajorsInner() {
   async function submit() {
     if (!name.trim()) { setError("Please enter your name"); return }
     if (!allPicked) { setError("Please pick one golfer from each tier"); return }
-    if (!tiebreaker) { setError("Please enter a tiebreaker score"); return }
+    if (!winnerPickId && !skipWinnerPick) {
+      setError("Pick a winner or opt out of the side bet")
+      return
+    }
     setError(null)
     setSubmitting(true)
 
@@ -174,8 +178,8 @@ function EnterMajorsInner() {
           entrantName: name.trim(),
           email: email.trim() || undefined,
           picks,
-          winnerPickId: winnerPickId || undefined,
-          tiebreaker: tiebreaker ? parseInt(tiebreaker) : undefined,
+          winnerPickId: skipWinnerPick ? undefined : (winnerPickId || undefined),
+          tiebreaker,
           groupId: groupId || undefined,
         }),
       })
@@ -357,15 +361,25 @@ function EnterMajorsInner() {
               ${tournament.sideBetAmount} side bet · winner take all · optional but recommended
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-1.5 max-h-64 overflow-y-auto">
-              <button
-                onClick={() => setWinnerPickId("")}
-                className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm border transition-colors
-                  ${!winnerPickId ? "border-primary bg-primary/5 font-medium" : "border-border hover:bg-muted/50"}`}
-              >
-                <span className="text-muted-foreground">No pick (skip ${tournament.sideBetAmount} side bet)</span>
-              </button>
+          <CardContent className="space-y-3">
+            <label
+              className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm border cursor-pointer transition-colors
+                ${skipWinnerPick ? "border-primary bg-primary/5 font-medium" : "border-border hover:bg-muted/50"}`}
+            >
+              <input
+                type="checkbox"
+                checked={skipWinnerPick}
+                onChange={(e) => {
+                  setSkipWinnerPick(e.target.checked)
+                  if (e.target.checked) setWinnerPickId("")
+                }}
+                className="h-4 w-4 accent-primary"
+              />
+              <span>Opt out of the ${tournament.sideBetAmount} side bet</span>
+            </label>
+            <div
+              className={`space-y-1.5 max-h-64 overflow-y-auto ${skipWinnerPick ? "opacity-50 pointer-events-none" : ""}`}
+            >
               {tournament.golfers
                 .sort((a, b) => a.odds - b.odds)
                 .map((g) => {
@@ -373,7 +387,10 @@ function EnterMajorsInner() {
                   return (
                     <button
                       key={g.id}
-                      onClick={() => setWinnerPickId(isSelected ? "" : g.id)}
+                      onClick={() => {
+                        setWinnerPickId(isSelected ? "" : g.id)
+                        setSkipWinnerPick(false)
+                      }}
                       className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm border transition-colors
                         ${isSelected
                           ? "border-primary bg-primary/5 font-medium"
@@ -397,27 +414,43 @@ function EnterMajorsInner() {
           <CardHeader>
             <CardTitle className="text-base">Tiebreaker</CardTitle>
             <CardDescription>
-              Predict the winning score (strokes relative to par). Closest prediction breaks ties in both the pool and the pick-the-winner side bet. Enter negative for under par (e.g. -15).
+              Predict the winning score (strokes relative to par). Closest prediction breaks ties in both the pool and the pick-the-winner side bet.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                value={tiebreaker}
-                onChange={(e) => setTiebreaker(e.target.value)}
-                placeholder="-15"
-                className="w-28"
-              />
-              <span className="text-sm text-muted-foreground">
-                {tiebreaker
-                  ? tiebreaker === "0"
+            <div className="flex items-center justify-center gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-12 w-12 shrink-0"
+                onClick={() => setTiebreaker((v) => v - 1)}
+                aria-label="Decrease"
+              >
+                <Minus className="h-5 w-5" />
+              </Button>
+              <div className="flex flex-col items-center min-w-[8rem]">
+                <span className="text-3xl font-bold tabular-nums">
+                  {tiebreaker > 0 ? `+${tiebreaker}` : tiebreaker === 0 ? "E" : tiebreaker}
+                </span>
+                <span className="text-xs text-muted-foreground mt-0.5">
+                  {tiebreaker === 0
                     ? "Even par"
-                    : parseInt(tiebreaker) < 0
-                      ? `${Math.abs(parseInt(tiebreaker))} under par`
-                      : `${tiebreaker} over par`
-                  : ""}
-              </span>
+                    : tiebreaker < 0
+                      ? `${Math.abs(tiebreaker)} under par`
+                      : `${tiebreaker} over par`}
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-12 w-12 shrink-0"
+                onClick={() => setTiebreaker((v) => v + 1)}
+                aria-label="Increase"
+              >
+                <Plus className="h-5 w-5" />
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -433,7 +466,7 @@ function EnterMajorsInner() {
         {/* Submit */}
         <Button
           onClick={submit}
-          disabled={submitting || !name || !allPicked || !tiebreaker}
+          disabled={submitting || !name || !allPicked || (!winnerPickId && !skipWinnerPick)}
           className="w-full"
           size="lg"
         >
