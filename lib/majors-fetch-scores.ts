@@ -143,23 +143,32 @@ interface ESPNCompetitor {
   order?: number
   athlete?: { id: string; displayName: string }
   score?: string
-  linescores?: { displayValue?: string }[]
+  linescores?: { displayValue?: string; linescores?: unknown[] }[]
   status?: { thru?: number; displayValue?: string }
 }
 
-function extractCompetitors(data: unknown): ESPNCompetitor[] {
+function extractCompetition(data: unknown): { competitors: ESPNCompetitor[]; currentRound: number } {
   try {
     const d = data as Record<string, unknown>
     const events = (d.events ?? d.event) as unknown[]
-    if (!Array.isArray(events) || events.length === 0) return []
+    if (!Array.isArray(events) || events.length === 0) return { competitors: [], currentRound: 1 }
     const event = events[0] as Record<string, unknown>
     const competitions = event.competitions as unknown[]
-    if (!Array.isArray(competitions) || competitions.length === 0) return []
+    if (!Array.isArray(competitions) || competitions.length === 0) return { competitors: [], currentRound: 1 }
     const comp = competitions[0] as Record<string, unknown>
-    return (comp.competitors as ESPNCompetitor[]) ?? []
+    const status = comp.status as { period?: number } | undefined
+    const currentRound = typeof status?.period === "number" && status.period >= 1 && status.period <= 4 ? status.period : 1
+    return { competitors: (comp.competitors as ESPNCompetitor[]) ?? [], currentRound }
   } catch {
-    return []
+    return { competitors: [], currentRound: 1 }
   }
+}
+
+// Last name + first initial for resolving nickname variants (Matt/Matthew, Alex/Alexander, Dan/Daniel, etc.)
+function firstInitialLast(name: string): string {
+  const parts = normalizeName(name).split(/\s+/).filter(Boolean)
+  if (parts.length < 2) return ""
+  return `${parts[0][0]} ${parts[parts.length - 1]}`
 }
 
 export async function fetchFromESPN(
@@ -177,26 +186,37 @@ export async function fetchFromESPN(
   if (!espnRes.ok) throw new Error(`ESPN API error ${espnRes.status}`)
 
   const espnData = await espnRes.json()
-  const competitors = extractCompetitors(espnData)
+  const { competitors, currentRound } = extractCompetition(espnData)
   if (competitors.length === 0) throw new Error("No competitor data found in ESPN response")
 
   const byName = new Map<string, ESPNCompetitor>()
   const byCompact = new Map<string, ESPNCompetitor>()
   const byEspnId = new Map<string, ESPNCompetitor>()
+  const byInitialLast = new Map<string, ESPNCompetitor | null>() // null = duplicate, ambiguous
+  const byLastName = new Map<string, ESPNCompetitor | null>()
   for (const c of competitors) {
     if (c.athlete?.displayName) {
       byName.set(normalizeName(c.athlete.displayName), c)
       byCompact.set(compactName(c.athlete.displayName), c)
+      const il = firstInitialLast(c.athlete.displayName)
+      if (il) byInitialLast.set(il, byInitialLast.has(il) ? null : c)
+      const parts = normalizeName(c.athlete.displayName).split(/\s+/).filter(Boolean)
+      const last = parts[parts.length - 1]
+      if (last) byLastName.set(last, byLastName.has(last) ? null : c)
     }
     if (c.athlete?.id) byEspnId.set(c.athlete.id, c)
   }
 
   const updates: Promise<unknown>[] = []
   for (const golfer of golfers) {
+    const parts = normalizeName(golfer.name).split(/\s+/).filter(Boolean)
+    const lastName = parts[parts.length - 1]
     const comp =
       (golfer.espnId ? byEspnId.get(golfer.espnId) : undefined) ??
       byName.get(normalizeName(golfer.name)) ??
-      byCompact.get(compactName(golfer.name))
+      byCompact.get(compactName(golfer.name)) ??
+      (byInitialLast.get(firstInitialLast(golfer.name)) ?? undefined) ??
+      (lastName ? (byLastName.get(lastName) ?? undefined) : undefined)
     if (!comp) continue
 
     const ls = comp.linescores ?? []
@@ -212,8 +232,17 @@ export async function fetchFromESPN(
     let position: string | null = comp.order != null ? String(comp.order) : null
     if (isCut) position = "CUT"
     if (isWithdrawn) position = "WD"
-    const thruNum = comp.status?.thru
-    const thru = thruNum != null ? (thruNum === 18 ? "F" : String(thruNum)) : null
+
+    // ESPN's competitor.status.thru is unreliable (often missing). Derive from current-round linescores.
+    const currentLs = ls[currentRound - 1]
+    const holesPlayed = Array.isArray(currentLs?.linescores) ? currentLs.linescores.length : 0
+    const thru = comp.status?.thru != null
+      ? (comp.status.thru === 18 ? "F" : String(comp.status.thru))
+      : holesPlayed === 0
+        ? null
+        : holesPlayed >= 18
+          ? "F"
+          : String(holesPlayed)
 
     updates.push(
       prisma.majorsGolfer.update({
