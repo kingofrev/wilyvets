@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const body = await request.json()
-  const { name, type, year, espnEventId, buyIn, sideBetAmount, payoutStructure } = body
+  const { name, type, year, espnEventId, buyIn, sideBetAmount, sideBetEnabled, payoutStructure } = body
 
   if (!name || !type || !year) {
     return NextResponse.json({ error: "name, type and year are required" }, { status: 400 })
@@ -50,6 +50,7 @@ export async function POST(request: Request) {
   const VALID_SIDE_BETS = [5, 10, 20, 25, 50]
   const parsedBuyIn = buyIn ? parseInt(buyIn) : 10
   const parsedSideBet = sideBetAmount ? parseInt(sideBetAmount) : 20
+  const parsedSideBetEnabled = sideBetEnabled !== false
   if (!VALID_BUY_INS.includes(parsedBuyIn)) {
     return NextResponse.json({ error: "Invalid buy-in amount" }, { status: 400 })
   }
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
       year: parseInt(year),
       buyIn: parsedBuyIn,
       sideBetAmount: parsedSideBet,
+      sideBetEnabled: parsedSideBetEnabled,
       payoutStructure: parsedPayout,
       espnLeague: DEFAULT_ESPN_LEAGUES[tournamentType],
       espnEventId: espnEventId || null,

@@ -27,6 +27,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
   let groupName: string | null = null
   let buyIn = tournament.buyIn
   let sideBetAmount = tournament.sideBetAmount
+  let sideBetEnabled = tournament.sideBetEnabled
   let payoutStructure: string = tournament.payoutStructure
   if (groupId) {
     const group = await prisma.majorsGroup.findUnique({ where: { id: groupId } })
@@ -34,6 +35,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
     // Override with group-level settings where set
     if (group?.buyIn != null) buyIn = group.buyIn
     if (group?.sideBetAmount != null) sideBetAmount = group.sideBetAmount
+    if (group?.sideBetEnabled != null) sideBetEnabled = group.sideBetEnabled
     if (group?.payoutStructure != null) payoutStructure = group.payoutStructure
   }
 
@@ -46,6 +48,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
       status: tournament.status,
       buyIn,
       sideBetAmount,
+      sideBetEnabled,
       payoutStructure,
       golfers: tournament.golfers,
       entryCount: tournament.entries.length,

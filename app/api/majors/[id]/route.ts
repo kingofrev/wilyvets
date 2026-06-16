@@ -40,7 +40,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   }
 
   const body = await request.json()
-  const { status, espnEventId, espnLeague, oddsApiSportKey, buyIn, sideBetAmount, payoutStructure } = body
+  const { status, espnEventId, espnLeague, oddsApiSportKey, buyIn, sideBetAmount, sideBetEnabled, payoutStructure } = body
 
   const VALID_BUY_INS = [10, 20, 40, 50, 75, 100]
   const VALID_SIDE_BETS = [5, 10, 20, 25, 50]
@@ -51,6 +51,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   }
   if (sideBetAmount !== undefined && !VALID_SIDE_BETS.includes(parseInt(sideBetAmount))) {
     return NextResponse.json({ error: "Invalid side bet amount" }, { status: 400 })
+  }
+  if (sideBetEnabled !== undefined && typeof sideBetEnabled !== "boolean") {
+    return NextResponse.json({ error: "Invalid sideBetEnabled value" }, { status: 400 })
   }
   if (payoutStructure !== undefined && !VALID_PAYOUTS.includes(payoutStructure)) {
     return NextResponse.json({ error: "Invalid payout structure" }, { status: 400 })
@@ -65,6 +68,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       ...(oddsApiSportKey !== undefined && { oddsApiSportKey }),
       ...(buyIn !== undefined && { buyIn: parseInt(buyIn) }),
       ...(sideBetAmount !== undefined && { sideBetAmount: parseInt(sideBetAmount) }),
+      ...(sideBetEnabled !== undefined && { sideBetEnabled }),
       ...(payoutStructure !== undefined && { payoutStructure }),
     },
   })

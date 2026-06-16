@@ -63,7 +63,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   }
 
   const body = await request.json()
-  const { buyIn, sideBetAmount, payoutStructure } = body
+  const { buyIn, sideBetAmount, sideBetEnabled, payoutStructure } = body
 
   const VALID_BUY_INS = [10, 20, 40, 50, 75, 100]
   const VALID_SIDE_BETS = [5, 10, 20, 25, 50]
@@ -73,6 +73,13 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   }
   if (sideBetAmount !== undefined && sideBetAmount !== null && !VALID_SIDE_BETS.includes(Number(sideBetAmount))) {
     return NextResponse.json({ error: "Invalid sideBetAmount" }, { status: 400 })
+  }
+  if (
+    sideBetEnabled !== undefined &&
+    sideBetEnabled !== null &&
+    typeof sideBetEnabled !== "boolean"
+  ) {
+    return NextResponse.json({ error: "Invalid sideBetEnabled" }, { status: 400 })
   }
   if (
     payoutStructure !== undefined &&
@@ -87,6 +94,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     data: {
       ...(buyIn !== undefined && { buyIn: buyIn !== null ? Number(buyIn) : null }),
       ...(sideBetAmount !== undefined && { sideBetAmount: sideBetAmount !== null ? Number(sideBetAmount) : null }),
+      ...(sideBetEnabled !== undefined && { sideBetEnabled: sideBetEnabled ?? null }),
       ...(payoutStructure !== undefined && { payoutStructure: payoutStructure ?? null }),
     },
     include: { _count: { select: { entries: true } } },

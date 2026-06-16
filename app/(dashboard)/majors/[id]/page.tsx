@@ -65,6 +65,7 @@ interface Group {
   name: string
   buyIn: number | null
   sideBetAmount: number | null
+  sideBetEnabled: boolean | null
   payoutStructure: string | null
   _count: { entries: number }
 }
@@ -77,6 +78,7 @@ interface Tournament {
   status: "UPCOMING" | "IN_PROGRESS" | "COMPLETED"
   buyIn: number
   sideBetAmount: number
+  sideBetEnabled: boolean
   payoutStructure: string
   espnLeague: string
   espnEventId: string | null
@@ -189,7 +191,10 @@ export default function MajorsTournamentPage() {
     load()
   }
 
-  async function saveSetting(field: "buyIn" | "sideBetAmount" | "payoutStructure", value: string) {
+  async function saveSetting(
+    field: "buyIn" | "sideBetAmount" | "payoutStructure" | "sideBetEnabled",
+    value: string | boolean,
+  ) {
     setSavingSettings(true)
     try {
       await fetch(`/api/majors/${params.id}`, {
@@ -208,8 +213,8 @@ export default function MajorsTournamentPage() {
 
   async function saveGroupSetting(
     groupId: string,
-    field: "buyIn" | "sideBetAmount" | "payoutStructure",
-    value: string,
+    field: "buyIn" | "sideBetAmount" | "payoutStructure" | "sideBetEnabled",
+    value: string | boolean,
   ) {
     setSavingGroupSettings(true)
     try {
@@ -457,12 +462,12 @@ export default function MajorsTournamentPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm w-32 shrink-0">Pick the Winner bet</span>
             <Select
               value={String(tournament.sideBetAmount ?? 20)}
               onValueChange={(v) => saveSetting("sideBetAmount", v)}
-              disabled={savingSettings}
+              disabled={savingSettings || !tournament.sideBetEnabled}
             >
               <SelectTrigger className="w-28">
                 <SelectValue />
@@ -475,6 +480,16 @@ export default function MajorsTournamentPage() {
                 <SelectItem value="50">$50</SelectItem>
               </SelectContent>
             </Select>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!tournament.sideBetEnabled}
+                onChange={(e) => saveSetting("sideBetEnabled", !e.target.checked)}
+                disabled={savingSettings}
+                className="h-4 w-4 accent-primary"
+              />
+              Waive
+            </label>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm w-32 shrink-0">Payout structure</span>
@@ -531,6 +546,7 @@ export default function MajorsTournamentPage() {
                 // Effective values: group overrides > tournament defaults
                 const effectiveBuyIn = group.buyIn ?? tournament.buyIn ?? 10
                 const effectiveSideBet = group.sideBetAmount ?? tournament.sideBetAmount ?? 20
+                const effectiveSideBetEnabled = group.sideBetEnabled ?? tournament.sideBetEnabled ?? true
                 const effectivePayout = group.payoutStructure ?? tournament.payoutStructure ?? "WINNER_TAKE_ALL"
                 return (
                   <div key={group.id} className="rounded-lg border overflow-hidden">
@@ -585,7 +601,7 @@ export default function MajorsTournamentPage() {
                       <div className="border-t bg-muted/20 px-3 py-3 space-y-2">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                           Group Settings
-                          {(group.buyIn == null && group.sideBetAmount == null && group.payoutStructure == null) && (
+                          {(group.buyIn == null && group.sideBetAmount == null && group.sideBetEnabled == null && group.payoutStructure == null) && (
                             <span className="ml-2 font-normal normal-case">— using pool defaults</span>
                           )}
                         </p>
@@ -609,12 +625,12 @@ export default function MajorsTournamentPage() {
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
                           <span className="text-xs text-muted-foreground w-32 shrink-0">Pick the Winner bet</span>
                           <Select
                             value={String(effectiveSideBet)}
                             onValueChange={(v) => saveGroupSetting(group.id, "sideBetAmount", v)}
-                            disabled={savingGroupSettings}
+                            disabled={savingGroupSettings || !effectiveSideBetEnabled}
                           >
                             <SelectTrigger className="w-28 h-8 text-xs">
                               <SelectValue />
@@ -627,6 +643,16 @@ export default function MajorsTournamentPage() {
                               <SelectItem value="50">$50</SelectItem>
                             </SelectContent>
                           </Select>
+                          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={!effectiveSideBetEnabled}
+                              onChange={(e) => saveGroupSetting(group.id, "sideBetEnabled", !e.target.checked)}
+                              disabled={savingGroupSettings}
+                              className="h-4 w-4 accent-primary"
+                            />
+                            Waive
+                          </label>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-xs text-muted-foreground w-32 shrink-0">Payout structure</span>
@@ -655,7 +681,8 @@ export default function MajorsTournamentPage() {
       </Card>
 
       {/* Winner Pick Side Bet */}
-      {(tournament.status === "IN_PROGRESS" || tournament.status === "COMPLETED") &&
+      {tournament.sideBetEnabled &&
+        (tournament.status === "IN_PROGRESS" || tournament.status === "COMPLETED") &&
         tournament.entries.length > 0 && (
           <Card>
             <CardHeader className="pb-2">
@@ -750,7 +777,7 @@ export default function MajorsTournamentPage() {
                             <p className="font-medium">{entry.entrantName}</p>
                             <p className="text-xs text-muted-foreground">
                               TB: {entry.tiebreaker !== null ? formatScore(entry.tiebreaker) : "-"}
-                              {entry.winnerPick && ` · Winner: ${entry.winnerPick.name}`}
+                              {tournament.sideBetEnabled && entry.winnerPick && ` · Winner: ${entry.winnerPick.name}`}
                             </p>
                           </div>
                         </div>
@@ -816,27 +843,29 @@ export default function MajorsTournamentPage() {
                         {editTiebreaker === "" ? "" : editTiebreaker === "0" ? "E" : parseInt(editTiebreaker) < 0 ? `${Math.abs(parseInt(editTiebreaker))} under` : `+${editTiebreaker}`}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground w-14 shrink-0">Winner pick</span>
-                      <Select
-                        value={editWinnerPickId}
-                        onValueChange={setEditWinnerPickId}
-                      >
-                        <SelectTrigger className="flex-1 h-8 text-xs">
-                          <SelectValue placeholder="No pick" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none" className="text-xs">No pick</SelectItem>
-                          {tournament.golfers
-                            .sort((a, b) => a.odds - b.odds)
-                            .map((g) => (
-                              <SelectItem key={g.id} value={g.id} className="text-xs">
-                                {g.name} (+{g.odds})
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {tournament.sideBetEnabled && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground w-14 shrink-0">Winner pick</span>
+                        <Select
+                          value={editWinnerPickId}
+                          onValueChange={setEditWinnerPickId}
+                        >
+                          <SelectTrigger className="flex-1 h-8 text-xs">
+                            <SelectValue placeholder="No pick" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none" className="text-xs">No pick</SelectItem>
+                            {tournament.golfers
+                              .sort((a, b) => a.odds - b.odds)
+                              .map((g) => (
+                                <SelectItem key={g.id} value={g.id} className="text-xs">
+                                  {g.name} (+{g.odds})
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <Button
                       size="sm"
                       onClick={() => saveEntry(entry.id)}

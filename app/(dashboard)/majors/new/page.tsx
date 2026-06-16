@@ -28,6 +28,7 @@ export default function NewMajorsPage() {
   const [year, setYear] = useState(new Date().getFullYear().toString())
   const [buyIn, setBuyIn] = useState("10")
   const [sideBetAmount, setSideBetAmount] = useState("20")
+  const [sideBetEnabled, setSideBetEnabled] = useState(true)
   const [payoutStructure, setPayoutStructure] = useState("WINNER_TAKE_ALL")
   const [espnEventId, setEspnEventId] = useState("")
 
@@ -54,7 +55,7 @@ export default function NewMajorsPage() {
       const res = await fetch("/api/majors", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, type, year, buyIn, sideBetAmount, payoutStructure, espnEventId: espnEventId || undefined }),
+        body: JSON.stringify({ name, type, year, buyIn, sideBetAmount, sideBetEnabled, payoutStructure, espnEventId: espnEventId || undefined }),
       })
       if (!res.ok) throw new Error((await res.json()).error)
       const { tournament } = await res.json()
@@ -140,18 +141,33 @@ export default function NewMajorsPage() {
 
           <div className="space-y-2">
             <Label>Pick the Winner side bet</Label>
-            <Select value={sideBetAmount} onValueChange={setSideBetAmount}>
-              <SelectTrigger className="w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">$5</SelectItem>
-                <SelectItem value="10">$10</SelectItem>
-                <SelectItem value="20">$20</SelectItem>
-                <SelectItem value="25">$25</SelectItem>
-                <SelectItem value="50">$50</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-3">
+              <Select
+                value={sideBetAmount}
+                onValueChange={setSideBetAmount}
+                disabled={!sideBetEnabled}
+              >
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">$5</SelectItem>
+                  <SelectItem value="10">$10</SelectItem>
+                  <SelectItem value="20">$20</SelectItem>
+                  <SelectItem value="25">$25</SelectItem>
+                  <SelectItem value="50">$50</SelectItem>
+                </SelectContent>
+              </Select>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!sideBetEnabled}
+                  onChange={(e) => setSideBetEnabled(!e.target.checked)}
+                  className="h-4 w-4 accent-primary"
+                />
+                Waive side bet
+              </label>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -191,7 +207,11 @@ export default function NewMajorsPage() {
           <p><strong>Scoring:</strong> Each entrant picks 1 golfer per tier (6 total). Best 4 of 6 scores count — the 2 worst picks are dropped.</p>
           <p><strong>Missed cut:</strong> Golfer&apos;s R3 &amp; R4 scores become the worst R3/R4 in the field.</p>
           <p><strong>Tiebreaker:</strong> Closest predicted winning score.</p>
-          <p><strong>Side bet:</strong> $5 pick-the-winner, winner take all.</p>
+          {sideBetEnabled ? (
+            <p><strong>Side bet:</strong> ${sideBetAmount} pick-the-winner, winner take all.</p>
+          ) : (
+            <p><strong>Side bet:</strong> Waived for this pool.</p>
+          )}
         </CardContent>
       </Card>
 

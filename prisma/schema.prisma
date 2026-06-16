@@ -316,6 +316,7 @@ model MajorsTournament {
 
   buyIn           Int                    @default(10)
   sideBetAmount   Int                    @default(20)
+  sideBetEnabled  Boolean                @default(true)
   payoutStructure MajorsPayoutStructure  @default(WINNER_TAKE_ALL)
 
   // The Odds API config
@@ -346,6 +347,7 @@ model MajorsGroup {
   // Optional overrides — null means inherit from tournament
   buyIn           Int?
   sideBetAmount   Int?
+  sideBetEnabled  Boolean?
   payoutStructure MajorsPayoutStructure?
 
   entries         MajorsEntry[]

@@ -15,6 +15,7 @@ interface Tournament {
   status: "UPCOMING" | "IN_PROGRESS" | "COMPLETED"
   buyIn: number
   sideBetAmount: number
+  sideBetEnabled: boolean
   payoutStructure: string
   oddsUpdatedAt: string | null
   scoresUpdatedAt: string | null
@@ -104,7 +105,7 @@ export default function MajorsPage() {
                       {t._count.entries} {t._count.entries === 1 ? "entry" : "entries"}
                     </span>
                     <span>{t._count.golfers} golfers loaded</span>
-                    <span>${t.buyIn} buy-in · ${t.sideBetAmount} side bet · {t.payoutStructure === "TOP_THREE" ? "Top 3 paid" : "Winner take all"}</span>
+                    <span>${t.buyIn} buy-in · {t.sideBetEnabled ? `$${t.sideBetAmount} side bet` : "no side bet"} · {t.payoutStructure === "TOP_THREE" ? "Top 3 paid" : "Winner take all"}</span>
                   </div>
                 </CardContent>
               </Card>

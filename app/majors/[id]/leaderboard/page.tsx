@@ -44,6 +44,7 @@ interface Tournament {
   year: number
   status: string
   buyIn: number
+  sideBetEnabled: boolean
   payoutStructure: string
   entries: Entry[]
   golfers: Golfer[]
@@ -350,7 +351,7 @@ function PublicLeaderboardInner() {
         )}
 
         {/* Winner pick result */}
-        {(tournament.status === "IN_PROGRESS" || tournament.status === "COMPLETED") && actualLeader && (
+        {tournament.sideBetEnabled && (tournament.status === "IN_PROGRESS" || tournament.status === "COMPLETED") && actualLeader && (
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">
@@ -417,7 +418,7 @@ function PublicLeaderboardInner() {
                             </p>
                             <p className="text-xs text-muted-foreground">
                               TB: {entry.tiebreaker !== null ? formatScore(entry.tiebreaker) : "-"}
-                              {entry.winnerPick && ` · Winner: ${entry.winnerPick.name}`}
+                              {tournament.sideBetEnabled && entry.winnerPick && ` · Winner: ${entry.winnerPick.name}`}
                             </p>
                           </div>
                         </div>

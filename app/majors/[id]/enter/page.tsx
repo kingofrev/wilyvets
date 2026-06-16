@@ -30,6 +30,7 @@ interface TournamentPublic {
   status: string
   buyIn: number
   sideBetAmount: number
+  sideBetEnabled: boolean
   payoutStructure: string
   golfers: Golfer[]
   entryCount: number
@@ -155,10 +156,12 @@ function EnterMajorsInner() {
 
   const allPicked = Object.keys(tierPicks).length === 6
 
+  const sideBetActive = tournament.sideBetEnabled
+
   async function submit() {
     if (!name.trim()) { setError("Please enter your name"); return }
     if (!allPicked) { setError("Please pick one golfer from each tier"); return }
-    if (!winnerPickId && !skipWinnerPick) {
+    if (sideBetActive && !winnerPickId && !skipWinnerPick) {
       setError("Pick a winner or opt out of the side bet")
       return
     }
@@ -295,8 +298,10 @@ function EnterMajorsInner() {
               ? <p>• Top 3 share the ${tournament.buyIn} pool: 1st 60% · 2nd 30% · 3rd 10%.</p>
               : <p>• Lowest combined score wins the ${tournament.buyIn} pool.</p>
             }
-            <p>• Separate ${tournament.sideBetAmount} pick-the-winner side bet (winner take all).</p>
-            <p>• Tiebreaker: closest predicted winning score — breaks ties in both the pool and the pick-the-winner side bet.</p>
+            {sideBetActive && (
+              <p>• Separate ${tournament.sideBetAmount} pick-the-winner side bet (winner take all).</p>
+            )}
+            <p>• Tiebreaker: closest predicted winning score{sideBetActive ? " — breaks ties in both the pool and the pick-the-winner side bet" : ""}.</p>
           </CardContent>
         </Card>
 
@@ -351,6 +356,7 @@ function EnterMajorsInner() {
         ))}
 
         {/* Winner Pick Side Bet */}
+        {sideBetActive && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
@@ -408,13 +414,14 @@ function EnterMajorsInner() {
             </label>
           </CardContent>
         </Card>
+        )}
 
         {/* Tiebreaker */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Tiebreaker</CardTitle>
             <CardDescription>
-              Predict the winning score (strokes relative to par). Closest prediction breaks ties in both the pool and the pick-the-winner side bet.
+              Predict the winning score (strokes relative to par). Closest prediction breaks ties{sideBetActive ? " in both the pool and the pick-the-winner side bet" : ""}.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -466,7 +473,7 @@ function EnterMajorsInner() {
         {/* Submit */}
         <Button
           onClick={submit}
-          disabled={submitting || !name || !allPicked || (!winnerPickId && !skipWinnerPick)}
+          disabled={submitting || !name || !allPicked || (sideBetActive && !winnerPickId && !skipWinnerPick)}
           className="w-full"
           size="lg"
         >
