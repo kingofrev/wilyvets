@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getStrokesOnHole, determineHoleWinner, calculateCourseHandicap } from "@/lib/utils";
-import { calculateMatchState, calculateSettlement } from "@/lib/games/nassau";
+import { calculateCourseHandicap } from "@/lib/utils";
+import {
+  buildMatchHoleResults,
+  calculateMatchState,
+} from "@/lib/games/nassau";
 
 interface ScoreInput {
   roundPlayerId: string;
@@ -44,6 +47,9 @@ export async function POST(
           include: {
             player1: true,
             player2: true,
+            presses: {
+              where: { isManual: true },
+            },
           },
         },
       },
@@ -139,59 +145,26 @@ export async function POST(
       const player2CourseHcp = playerCourseHandicaps.find(p => p.id === match.player2Id)?.courseHandicap || 0;
 
       // Build hole results for this match
-      const holeResults = [];
-      for (let holeNum = 1; holeNum <= 18; holeNum++) {
-        const p1Score = player1Scores.find((s) => s.holeNumber === holeNum);
-        const p2Score = player2Scores.find((s) => s.holeNumber === holeNum);
+      const holeResults = buildMatchHoleResults(
+        round.course.holes,
+        round.handicapMode,
+        { courseHandicap: player1CourseHcp, scores: player1Scores },
+        { courseHandicap: player2CourseHcp, scores: player2Scores }
+      );
 
-        if (p1Score && p2Score) {
-          const hole = round.course.holes.find((h) => h.holeNumber === holeNum);
-          if (!hole) continue;
-
-          let p1Strokes = 0;
-          let p2Strokes = 0;
-
-          if (round.handicapMode === "GROUP_LOWEST") {
-            p1Strokes = p1Score.strokesReceived;
-            p2Strokes = p2Score.strokesReceived;
-          } else {
-            // MATCH_LOWEST - calculate based on match pairing using course handicaps
-            p1Strokes = getStrokesOnHole(
-              player1CourseHcp,
-              player2CourseHcp,
-              hole.handicap,
-              "MATCH_LOWEST"
-            );
-            p2Strokes = getStrokesOnHole(
-              player2CourseHcp,
-              player1CourseHcp,
-              hole.handicap,
-              "MATCH_LOWEST"
-            );
-          }
-
-          const p1Net = p1Score.grossStrokes - p1Strokes;
-          const p2Net = p2Score.grossStrokes - p2Strokes;
-
-          holeResults.push({
-            holeNumber: holeNum,
-            player1Gross: p1Score.grossStrokes,
-            player2Gross: p2Score.grossStrokes,
-            player1Net: p1Net,
-            player2Net: p2Net,
-            player1StrokesReceived: p1Strokes,
-            player2StrokesReceived: p2Strokes,
-            winner: determineHoleWinner(p1Net, p2Net),
-          });
-        }
-      }
-
-      // Calculate match state
+      // Calculate match state. Manual presses are stored bets, so they are fed
+      // back in to have their status recalculated against the latest scores.
       const matchState = calculateMatchState(
         holeResults,
         round.autoPressAt2,
         match.player1Id,
-        match.player2Id
+        match.player2Id,
+        match.presses.map((press) => ({
+          id: press.id,
+          segment: press.segment,
+          startHole: press.startHole,
+          triggeredBy: press.triggeredById,
+        }))
       );
 
       // Update match results
@@ -225,24 +198,48 @@ export async function POST(
         },
       });
 
-      // Handle presses
-      // Delete existing presses for this match
+      // Handle presses. Auto presses are derived from the scores, so they are
+      // rebuilt from scratch; manual presses are kept and updated in place.
       await prisma.press.deleteMany({
-        where: { matchId: match.id },
+        where: { matchId: match.id, isManual: false },
       });
 
-      // Create new presses
       for (const press of matchState.presses) {
+        const status = {
+          player1Status: press.player1Status,
+          holesPlayed: press.holesPlayed,
+          holesRemaining: press.holesRemaining,
+          isComplete: press.isComplete,
+          isClosed: press.isClosed,
+          winnerId: press.winnerId ?? null,
+        };
+
+        if (press.isManual) {
+          if (!press.id) continue;
+          await prisma.press.update({
+            where: { id: press.id },
+            data: status,
+          });
+          continue;
+        }
+
+        // Don't double up an auto press on a hole a manual press already covers
+        const alreadyPressed = matchState.presses.some(
+          (other) =>
+            other.isManual &&
+            other.segment === press.segment &&
+            other.startHole === press.startHole
+        );
+        if (alreadyPressed) continue;
+
         await prisma.press.create({
           data: {
             matchId: match.id,
             segment: press.segment,
             startHole: press.startHole,
-            player1Status: press.player1Status,
-            holesRemaining: press.holesRemaining,
-            isClosed: press.isClosed,
-            winnerId: press.winnerId,
+            isManual: false,
             triggeredById: press.triggeredBy,
+            ...status,
           },
         });
       }

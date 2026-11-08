@@ -10,6 +10,13 @@ import Link from "next/link";
 import { cn, formatMatchStatus, formatCurrency, getStrokesOnHole, calculateCourseHandicap } from "@/lib/utils";
 import { calculateMatchState, calculateSettlement, type HoleResult } from "@/lib/games/nassau";
 import { calculateNinesState, calculateNinesSettlement, type NinesSettlement } from "@/lib/games/nines";
+import type { MatchSegment } from "@prisma/client";
+
+const SEGMENT_SHORT_LABELS: Record<string, string> = {
+  FRONT_9: "F9",
+  BACK_9: "B9",
+  OVERALL_18: "O18",
+};
 
 interface Player {
   id: string;
@@ -39,6 +46,8 @@ interface Press {
   id: string;
   segment: string;
   startHole: number;
+  isManual: boolean;
+  triggeredById: string;
   player1Status: number;
   holesRemaining: number;
   isClosed: boolean;
@@ -209,7 +218,15 @@ export default function RoundResultsPage() {
         holeResults,
         roundData.autoPressAt2,
         match.player1.id,
-        match.player2.id
+        match.player2.id,
+        (match.presses || [])
+          .filter((press) => press.isManual)
+          .map((press) => ({
+            id: press.id,
+            segment: press.segment as MatchSegment,
+            startHole: press.startHole,
+            triggeredBy: press.triggeredById,
+          }))
       );
 
       const settlement = calculateSettlement(
@@ -448,8 +465,14 @@ export default function RoundResultsPage() {
                           key={press.id || idx}
                           className="flex items-center justify-between text-sm py-1"
                         >
-                          <span>
-                            Hole {press.startHole}+ ({press.segment === "FRONT_9" ? "F9" : "B9"})
+                          <span className="flex items-center gap-1.5">
+                            Hole {press.startHole}+ (
+                            {SEGMENT_SHORT_LABELS[press.segment] ?? press.segment})
+                            {!press.isManual && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                Auto
+                              </Badge>
+                            )}
                           </span>
                           <span className="font-medium">
                             {winner || "Tied"}{" "}

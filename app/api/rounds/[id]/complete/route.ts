@@ -81,7 +81,15 @@ export async function POST(
         holeResults,
         round.autoPressAt2,
         match.player1Id,
-        match.player2Id
+        match.player2Id,
+        match.presses
+          .filter((press) => press.isManual)
+          .map((press) => ({
+            id: press.id,
+            segment: press.segment,
+            startHole: press.startHole,
+            triggeredBy: press.triggeredById,
+          }))
       );
 
       const settlement = calculateSettlement(

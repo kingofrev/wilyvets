@@ -237,6 +237,10 @@ model Press {
   startHole       Int           // Hole where press started
   triggeredById   String        // RoundPlayer id who was 2-down
 
+  // Manual presses are created by tapping "Press"; auto presses are derived
+  // from scores and recalculated on every save.
+  isManual        Boolean       @default(false)
+
   // Press status
   player1Status   Int           @default(0)
   holesPlayed     Int           @default(0)

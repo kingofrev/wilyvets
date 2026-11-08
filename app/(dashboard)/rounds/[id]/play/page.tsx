@@ -8,12 +8,101 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, X, Zap } from "lucide-react";
 import Link from "next/link";
 import { cn, formatMatchStatus, getStrokesOnHole, calculateCourseHandicap } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { calculateNinesState, formatHolePoints, type NinesState } from "@/lib/games/nines";
+import {
+  buildMatchHoleResults,
+  getPressOpportunities,
+  getSegmentStartHole,
+  type HoleResult,
+  type PressBet,
+  type PressOpportunity,
+} from "@/lib/games/nassau";
+import type { MatchSegment } from "@prisma/client";
+
+const SEGMENT_LABELS: Record<string, string> = {
+  FRONT_9: "Front 9",
+  BACK_9: "Back 9",
+  OVERALL_18: "Overall",
+};
+
+const SEGMENT_SHORT_LABELS: Record<string, string> = {
+  FRONT_9: "F9",
+  BACK_9: "B9",
+  OVERALL_18: "O18",
+};
+
+// One nine of a match, hole by hole, from player1's point of view
+function HoleStrip({
+  label,
+  startHole,
+  holeResults,
+}: {
+  label: string;
+  startHole: number;
+  holeResults: HoleResult[];
+}) {
+  let running = 0;
+  const cells = Array.from({ length: 9 }, (_, i) => startHole + i).map(
+    (holeNumber) => {
+      const result = holeResults.find((h) => h.holeNumber === holeNumber);
+      if (!result) return { holeNumber, mark: null, running: null };
+
+      if (result.winner === "player1") running++;
+      else if (result.winner === "player2") running--;
+
+      return {
+        holeNumber,
+        mark:
+          result.winner === "player1"
+            ? "W"
+            : result.winner === "player2"
+            ? "L"
+            : "H",
+        running,
+      };
+    }
+  );
+
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground mb-1">{label}</p>
+      <div className="grid grid-cols-9 gap-1 text-center">
+        {cells.map((cell) => (
+          <div key={cell.holeNumber}>
+            <p className="text-[10px] text-muted-foreground">
+              {cell.holeNumber}
+            </p>
+            <div
+              className={cn(
+                "rounded py-1 text-xs font-bold",
+                cell.mark === "W" && "bg-green-100 text-green-700",
+                cell.mark === "L" && "bg-red-100 text-red-700",
+                cell.mark === "H" && "bg-muted text-foreground",
+                !cell.mark && "bg-muted/30 text-muted-foreground"
+              )}
+            >
+              {cell.mark ?? "–"}
+            </div>
+            <p className="text-[10px] tabular-nums text-muted-foreground">
+              {cell.running === null
+                ? ""
+                : cell.running === 0
+                ? "AS"
+                : cell.running > 0
+                ? `+${cell.running}`
+                : cell.running}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface Hole {
   id: string;
@@ -50,6 +139,7 @@ interface Press {
   id: string;
   segment: string;
   startHole: number;
+  isManual: boolean;
   player1Status: number;
   holesRemaining: number;
   isClosed: boolean;
@@ -94,6 +184,16 @@ export default function PlayRoundPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("scorecard");
   const [showNet, setShowNet] = useState(false);
+  const [pendingPress, setPendingPress] = useState<string | null>(null);
+  const [expandedMatches, setExpandedMatches] = useState<string[]>([]);
+
+  function toggleMatchExpanded(matchId: string) {
+    setExpandedMatches((prev) =>
+      prev.includes(matchId)
+        ? prev.filter((m) => m !== matchId)
+        : [...prev, matchId]
+    );
+  }
 
   // Calculate course handicap for a player
   function getPlayerCourseHandicap(playerId: string): number {
@@ -159,6 +259,120 @@ export default function PlayRoundPage() {
           break;
         }
       }
+    }
+  }
+
+  // Hole-by-hole results for a match, decided the same way the API decides the
+  // match status it stores
+  function matchHoleResults(match: Match): HoleResult[] {
+    if (!round) return [];
+
+    return buildMatchHoleResults(
+      round.course.holes,
+      round.handicapMode === "MATCH_LOWEST" ? "MATCH_LOWEST" : "GROUP_LOWEST",
+      {
+        courseHandicap: getPlayerCourseHandicap(match.player1.id),
+        scores: match.player1.scores,
+      },
+      {
+        courseHandicap: getPlayerCourseHandicap(match.player2.id),
+        scores: match.player2.scores,
+      }
+    );
+  }
+
+  // Which of a match's three Nassau bets can be pressed right now
+  function matchPressOpportunities(match: Match): PressOpportunity[] {
+    if (!round || round.status === "COMPLETED") return [];
+
+    // The press starts on the hole after the last one both players have scored
+    let lastScoredHole = 0;
+    for (let hole = 1; hole <= 18; hole++) {
+      const p1Scored = match.player1.scores.some((s) => s.holeNumber === hole);
+      const p2Scored = match.player2.scores.some((s) => s.holeNumber === hole);
+      if (p1Scored && p2Scored) lastScoredHole = hole;
+    }
+
+    const bets: PressBet[] = [
+      ...match.results.map((result) => ({
+        segment: result.segment as MatchSegment,
+        startHole: getSegmentStartHole(result.segment as MatchSegment),
+        player1Status: result.player1Status,
+        isClosed: result.isClosed,
+      })),
+      ...match.presses.map((press) => ({
+        segment: press.segment as MatchSegment,
+        startHole: press.startHole,
+        player1Status: press.player1Status,
+        isClosed: press.isClosed,
+      })),
+    ];
+
+    return getPressOpportunities(
+      bets,
+      lastScoredHole,
+      match.player1.id,
+      match.player2.id
+    );
+  }
+
+  async function takePress(match: Match, opportunity: PressOpportunity) {
+    const key = `${match.id}:${opportunity.segment}`;
+    setPendingPress(key);
+    try {
+      const response = await fetch(
+        `/api/rounds/${id}/matches/${match.id}/press`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ segment: opportunity.segment }),
+        }
+      );
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to press");
+      }
+
+      toast({
+        title: `${SEGMENT_LABELS[opportunity.segment]} pressed`,
+        description: `New bet from hole ${opportunity.startHole}`,
+      });
+      await fetchRound();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description:
+          error instanceof Error ? error.message : "Failed to press",
+        variant: "destructive",
+      });
+    } finally {
+      setPendingPress(null);
+    }
+  }
+
+  async function undoPress(match: Match, pressId: string) {
+    setPendingPress(pressId);
+    try {
+      const response = await fetch(
+        `/api/rounds/${id}/matches/${match.id}/press?pressId=${pressId}`,
+        { method: "DELETE" }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to remove press");
+      }
+
+      toast({ title: "Press removed" });
+      await fetchRound();
+    } catch {
+      toast({
+        title: "Error",
+        description: "Failed to remove press",
+        variant: "destructive",
+      });
+    } finally {
+      setPendingPress(null);
     }
   }
 
@@ -245,6 +459,12 @@ export default function PlayRoundPage() {
   const allCurrentHoleScored = round.players.every(
     (p) => scores[p.id]?.[currentHole] && scores[p.id][currentHole] !== ""
   );
+  const pressOpportunitiesByMatch = new Map(
+    round.matches.map((match) => [match.id, matchPressOpportunities(match)])
+  );
+  const availablePressCount = Array.from(
+    pressOpportunitiesByMatch.values()
+  ).reduce((sum, opportunities) => sum + opportunities.length, 0);
 
   // Calculate 9s game state if enabled (3 or 4 players)
   const ninesState: NinesState | null = round.ninesEnabled && (round.players.length === 3 || round.players.length === 4)
@@ -304,7 +524,14 @@ export default function PlayRoundPage() {
         <TabsList className={cn("grid w-full", round.ninesEnabled ? "grid-cols-4" : "grid-cols-3")}>
           <TabsTrigger value="hole">Hole</TabsTrigger>
           <TabsTrigger value="scorecard">Card</TabsTrigger>
-          <TabsTrigger value="matches">Matches</TabsTrigger>
+          <TabsTrigger value="matches">
+            Matches
+            {availablePressCount > 0 && (
+              <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold leading-4 text-white">
+                {availablePressCount}
+              </span>
+            )}
+          </TabsTrigger>
           {round.ninesEnabled && <TabsTrigger value="nines">9s</TabsTrigger>}
         </TabsList>
 
@@ -696,14 +923,38 @@ export default function PlayRoundPage() {
             const front9 = match.results.find((r) => r.segment === "FRONT_9");
             const back9 = match.results.find((r) => r.segment === "BACK_9");
             const overall = match.results.find((r) => r.segment === "OVERALL_18");
+            const opportunities = pressOpportunitiesByMatch.get(match.id) ?? [];
+            const isExpanded = expandedMatches.includes(match.id);
+            const holeResults = isExpanded ? matchHoleResults(match) : [];
+            const won = holeResults.filter((h) => h.winner === "player1").length;
+            const lost = holeResults.filter((h) => h.winner === "player2").length;
+            const halved = holeResults.filter((h) => h.winner === "tie").length;
 
             return (
               <Card key={match.id}>
-                <CardHeader className="pb-2">
+                <CardHeader
+                  className="pb-2 cursor-pointer select-none"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isExpanded}
+                  onClick={() => toggleMatchExpanded(match.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      toggleMatchExpanded(match.id);
+                    }
+                  }}
+                >
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">
+                    <CardTitle className="text-base flex items-center gap-1">
                       {match.player1.player.name.split(" ")[0]} vs{" "}
                       {match.player2.player.name.split(" ")[0]}
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 text-muted-foreground transition-transform",
+                          isExpanded && "rotate-180"
+                        )}
+                      />
                     </CardTitle>
                     {match.strokeDifference > 0 && (
                       <Badge variant="outline" className="text-xs">
@@ -767,6 +1018,79 @@ export default function PlayRoundPage() {
                     </div>
                   </div>
 
+                  {/* Hole by hole, from the first player's point of view */}
+                  {isExpanded && (
+                    <div className="mt-3 pt-3 border-t space-y-3">
+                      {holeResults.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          No holes scored yet
+                        </p>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">
+                              {match.player1.player.name.split(" ")[0]}&apos;s holes
+                            </span>
+                            <span className="font-medium tabular-nums">
+                              <span className="text-green-600">{won} won</span>
+                              {" · "}
+                              <span className="text-red-600">{lost} lost</span>
+                              {" · "}
+                              <span className="text-muted-foreground">
+                                {halved} halved
+                              </span>
+                            </span>
+                          </div>
+                          <HoleStrip
+                            label="Front 9"
+                            startHole={1}
+                            holeResults={holeResults}
+                          />
+                          {holeResults.some((h) => h.holeNumber > 9) && (
+                            <HoleStrip
+                              label="Back 9"
+                              startHole={10}
+                              holeResults={holeResults}
+                            />
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Available presses — any bet where a player is 2+ down */}
+                  {opportunities.length > 0 && (
+                    <div className="mt-3 pt-3 border-t space-y-2">
+                      {opportunities.map((opportunity) => {
+                        const downPlayer =
+                          opportunity.downPlayerId === match.player1.id
+                            ? match.player1
+                            : match.player2;
+                        const key = `${match.id}:${opportunity.segment}`;
+
+                        return (
+                          <Button
+                            key={key}
+                            variant="outline"
+                            size="sm"
+                            disabled={pendingPress === key}
+                            onClick={() => takePress(match, opportunity)}
+                            className="w-full justify-between border-amber-500 text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+                          >
+                            <span className="flex items-center gap-1.5 font-medium">
+                              <Zap className="h-3.5 w-3.5" />
+                              Press {SEGMENT_LABELS[opportunity.segment]}
+                            </span>
+                            <span className="text-xs font-normal">
+                              {downPlayer.player.name.split(" ")[0]}{" "}
+                              {opportunity.downBy} DN · from {opportunity.startHole}
+                            </span>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {/* Presses */}
                   {match.presses.length > 0 && (
                     <div className="mt-3 pt-3 border-t">
@@ -774,26 +1098,47 @@ export default function PlayRoundPage() {
                         Presses
                       </p>
                       <div className="space-y-1">
-                        {match.presses.map((press, idx) => (
-                          <div
-                            key={press.id || idx}
-                            className="flex items-center justify-between text-sm"
-                          >
-                            <span>
-                              From hole {press.startHole} (
-                              {press.segment === "FRONT_9" ? "F9" : "B9"})
-                            </span>
-                            <span
-                              className={cn(
-                                "font-medium",
-                                press.player1Status > 0 && "text-green-600",
-                                press.player1Status < 0 && "text-red-600"
-                              )}
+                        {[...match.presses]
+                          .sort((a, b) => a.startHole - b.startHole)
+                          .map((press, idx) => (
+                            <div
+                              key={press.id || idx}
+                              className="flex items-center justify-between text-sm"
                             >
-                              {formatMatchStatus(press.player1Status)}
-                            </span>
-                          </div>
-                        ))}
+                              <span className="flex items-center gap-1.5">
+                                From hole {press.startHole} (
+                                {SEGMENT_SHORT_LABELS[press.segment] ?? press.segment})
+                                {!press.isManual && (
+                                  <Badge variant="secondary" className="text-[10px]">
+                                    Auto
+                                  </Badge>
+                                )}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <span
+                                  className={cn(
+                                    "font-medium",
+                                    press.player1Status > 0 && "text-green-600",
+                                    press.player1Status < 0 && "text-red-600"
+                                  )}
+                                >
+                                  {formatMatchStatus(press.player1Status)}
+                                </span>
+                                {press.isManual && round.status !== "COMPLETED" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-muted-foreground"
+                                    disabled={pendingPress === press.id}
+                                    onClick={() => undoPress(match, press.id)}
+                                    aria-label="Remove press"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </span>
+                            </div>
+                          ))}
                       </div>
                     </div>
                   )}
