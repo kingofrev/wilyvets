@@ -36,27 +36,34 @@ const SEGMENT_SHORT_LABELS: Record<string, string> = {
   OVERALL_18: "O18",
 };
 
-// One nine of a match, hole by hole, from player1's point of view
+// One nine of a match, hole by hole: each player's gross score, who took the
+// hole, and the running status through it — all from player1's point of view.
+// Holes are won on net, so a dot marks where a player had a handicap stroke
 function HoleStrip({
   label,
   startHole,
   holeResults,
+  player1Name,
+  player2Name,
 }: {
   label: string;
   startHole: number;
   holeResults: HoleResult[];
+  player1Name: string;
+  player2Name: string;
 }) {
   let running = 0;
   const cells = Array.from({ length: 9 }, (_, i) => startHole + i).map(
     (holeNumber) => {
       const result = holeResults.find((h) => h.holeNumber === holeNumber);
-      if (!result) return { holeNumber, mark: null, running: null };
+      if (!result) return { holeNumber, result: null, mark: null, running: null };
 
       if (result.winner === "player1") running++;
       else if (result.winner === "player2") running--;
 
       return {
         holeNumber,
+        result,
         mark:
           result.winner === "player1"
             ? "W"
@@ -68,38 +75,101 @@ function HoleStrip({
     }
   );
 
+  // A gross score, with a dot marking a hole where that player got a stroke
+  function scoreCell(gross: number | undefined, strokes: number | undefined) {
+    if (gross === undefined) {
+      return <span className="text-muted-foreground">–</span>;
+    }
+    return (
+      <span className="relative">
+        {gross}
+        {!!strokes && strokes > 0 && (
+          <span
+            className="absolute -top-0.5 -right-1.5 text-orange-500 leading-none"
+            title={`${strokes} handicap stroke${strokes > 1 ? "s" : ""}`}
+          >
+            •
+          </span>
+        )}
+      </span>
+    );
+  }
+
   return (
     <div>
       <p className="text-xs text-muted-foreground mb-1">{label}</p>
-      <div className="grid grid-cols-9 gap-1 text-center">
-        {cells.map((cell) => (
-          <div key={cell.holeNumber}>
-            <p className="text-[10px] text-muted-foreground">
-              {cell.holeNumber}
-            </p>
-            <div
-              className={cn(
-                "rounded py-1 text-xs font-bold",
-                cell.mark === "W" && "bg-green-100 text-green-700",
-                cell.mark === "L" && "bg-red-100 text-red-700",
-                cell.mark === "H" && "bg-muted text-foreground",
-                !cell.mark && "bg-muted/30 text-muted-foreground"
-              )}
-            >
-              {cell.mark ?? "–"}
-            </div>
-            <p className="text-[10px] tabular-nums text-muted-foreground">
-              {cell.running === null
-                ? ""
-                : cell.running === 0
-                ? "AS"
-                : cell.running > 0
-                ? `+${cell.running}`
-                : cell.running}
-            </p>
-          </div>
-        ))}
-      </div>
+      <table className="w-full text-xs tabular-nums">
+        <thead>
+          <tr className="text-muted-foreground">
+            <th className="w-12 text-left font-normal">Hole</th>
+            {cells.map((cell) => (
+              <th key={cell.holeNumber} className="font-normal text-center">
+                {cell.holeNumber}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="max-w-12 truncate text-muted-foreground">
+              {player1Name}
+            </td>
+            {cells.map((cell) => (
+              <td key={cell.holeNumber} className="text-center py-0.5">
+                {scoreCell(
+                  cell.result?.player1Gross,
+                  cell.result?.player1StrokesReceived
+                )}
+              </td>
+            ))}
+          </tr>
+          <tr>
+            <td className="max-w-12 truncate text-muted-foreground">
+              {player2Name}
+            </td>
+            {cells.map((cell) => (
+              <td key={cell.holeNumber} className="text-center py-0.5">
+                {scoreCell(
+                  cell.result?.player2Gross,
+                  cell.result?.player2StrokesReceived
+                )}
+              </td>
+            ))}
+          </tr>
+          <tr>
+            <td></td>
+            {cells.map((cell) => (
+              <td key={cell.holeNumber} className="px-0.5 pt-1">
+                <div
+                  className={cn(
+                    "rounded py-0.5 text-center font-bold",
+                    cell.mark === "W" && "bg-green-100 text-green-700",
+                    cell.mark === "L" && "bg-red-100 text-red-700",
+                    cell.mark === "H" && "bg-muted text-foreground",
+                    !cell.mark && "bg-muted/30 text-muted-foreground"
+                  )}
+                >
+                  {cell.mark ?? "–"}
+                </div>
+              </td>
+            ))}
+          </tr>
+          <tr className="text-[10px] text-muted-foreground">
+            <td></td>
+            {cells.map((cell) => (
+              <td key={cell.holeNumber} className="text-center">
+                {cell.running === null
+                  ? ""
+                  : cell.running === 0
+                  ? "AS"
+                  : cell.running > 0
+                  ? `+${cell.running}`
+                  : cell.running}
+              </td>
+            ))}
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -929,6 +999,7 @@ export default function PlayRoundPage() {
             const won = holeResults.filter((h) => h.winner === "player1").length;
             const lost = holeResults.filter((h) => h.winner === "player2").length;
             const halved = holeResults.filter((h) => h.winner === "tie").length;
+            const statusThroughNow = won - lost;
 
             return (
               <Card key={match.id}>
@@ -1027,11 +1098,26 @@ export default function PlayRoundPage() {
                         </p>
                       ) : (
                         <>
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">
-                              {match.player1.player.name.split(" ")[0]}&apos;s holes
-                            </span>
-                            <span className="font-medium tabular-nums">
+                          <div className="space-y-1">
+                            <p className="text-sm">
+                              <span className="font-medium">
+                                {match.player1.player.name.split(" ")[0]}
+                              </span>{" "}
+                              <span
+                                className={cn(
+                                  "font-bold",
+                                  statusThroughNow > 0 && "text-green-600",
+                                  statusThroughNow < 0 && "text-red-600"
+                                )}
+                              >
+                                {formatMatchStatus(statusThroughNow)}
+                              </span>{" "}
+                              <span className="text-muted-foreground">
+                                after {holeResults.length}{" "}
+                                {holeResults.length === 1 ? "hole" : "holes"}
+                              </span>
+                            </p>
+                            <p className="text-xs tabular-nums">
                               <span className="text-green-600">{won} won</span>
                               {" · "}
                               <span className="text-red-600">{lost} lost</span>
@@ -1039,18 +1125,22 @@ export default function PlayRoundPage() {
                               <span className="text-muted-foreground">
                                 {halved} halved
                               </span>
-                            </span>
+                            </p>
                           </div>
                           <HoleStrip
                             label="Front 9"
                             startHole={1}
                             holeResults={holeResults}
+                            player1Name={match.player1.player.name.split(" ")[0]}
+                            player2Name={match.player2.player.name.split(" ")[0]}
                           />
                           {holeResults.some((h) => h.holeNumber > 9) && (
                             <HoleStrip
                               label="Back 9"
                               startHole={10}
                               holeResults={holeResults}
+                              player1Name={match.player1.player.name.split(" ")[0]}
+                              player2Name={match.player2.player.name.split(" ")[0]}
                             />
                           )}
                         </>
