@@ -2,11 +2,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Play, Trophy } from "lucide-react";
+import { PlusCircle, Trophy } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
+import { ActiveRounds } from "@/components/active-rounds";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -74,33 +74,15 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      {/* Active Rounds */}
-      {activeRounds.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Active Rounds</CardTitle>
-            <CardDescription>Continue playing</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {activeRounds.map((round) => (
-              <Link key={round.id} href={`/rounds/${round.id}/play`}>
-                <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted transition-colors">
-                  <div>
-                    <p className="font-medium">{round.course.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      Hole {round.currentHole} • {round.players.length} players
-                    </p>
-                  </div>
-                  <Button size="sm">
-                    <Play className="h-4 w-4 mr-1" />
-                    Resume
-                  </Button>
-                </div>
-              </Link>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      {/* Active Rounds — resume or delete (deleting asks for confirmation) */}
+      <ActiveRounds
+        rounds={activeRounds.map((round) => ({
+          id: round.id,
+          courseName: round.course.name,
+          currentHole: round.currentHole,
+          playerCount: round.players.length,
+        }))}
+      />
 
       {/* Recent Rounds */}
       <Card>
