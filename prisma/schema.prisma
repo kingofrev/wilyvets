@@ -126,6 +126,10 @@ model Round {
   ninesEnabled    Boolean       @default(false)
   ninesPointValue Decimal       @db.Decimal(10, 2) @default(1.00)
 
+  // Trash settings (birdies, greenies, sandies, other)
+  trashEnabled    Boolean       @default(false)
+  trashPointValue Decimal       @db.Decimal(10, 2) @default(1.00)
+
   // Tracking
   currentHole     Int           @default(1)
   createdAt       DateTime      @default(now())
@@ -157,6 +161,7 @@ model RoundPlayer {
 
   // Relations
   scores          HoleScore[]
+  trash           TrashTally?
   matchesAsPlayer1 Match[]      @relation("MatchPlayer1")
   matchesAsPlayer2 Match[]      @relation("MatchPlayer2")
 
@@ -174,6 +179,19 @@ model HoleScore {
   strokesReceived Int           @default(0) // Handicap strokes received on this hole
 
   @@unique([roundPlayerId, holeNumber])
+}
+
+model TrashTally {
+  id              String        @id @default(cuid())
+  roundPlayer     RoundPlayer   @relation(fields: [roundPlayerId], references: [id], onDelete: Cascade)
+  roundPlayerId   String        @unique
+
+  // Birdies are counted from the scorecard, not stored here
+  greenies        Int           @default(0)
+  sandies         Int           @default(0)
+  others          Int           @default(0)
+
+  updatedAt       DateTime      @updatedAt
 }
 
 // ============================================

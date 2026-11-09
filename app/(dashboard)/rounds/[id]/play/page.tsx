@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
-import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, X, Zap } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Minus, Plus, X, Zap } from "lucide-react";
 import Link from "next/link";
 import { cn, formatMatchStatus, getStrokesOnHole, calculateCourseHandicap } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
@@ -23,6 +23,11 @@ import {
   type PressOpportunity,
 } from "@/lib/games/nassau";
 import type { MatchSegment } from "@prisma/client";
+import {
+  countBirdies,
+  totalTrashPoints,
+  type TrashCounts,
+} from "@/lib/games/trash";
 
 const SEGMENT_LABELS: Record<string, string> = {
   FRONT_9: "Front 9",
@@ -186,10 +191,17 @@ interface Player {
   name: string;
 }
 
+interface TrashTally {
+  greenies: number;
+  sandies: number;
+  others: number;
+}
+
 interface RoundPlayer {
   id: string;
   handicap: string;
   player: Player;
+  trash?: TrashTally | null;
   scores: {
     holeNumber: number;
     grossStrokes: number;
@@ -232,6 +244,8 @@ interface Round {
   autoPressAt2: boolean;
   ninesEnabled: boolean;
   ninesPointValue: string;
+  trashEnabled: boolean;
+  trashPointValue: string;
   course: {
     id: string;
     name: string;
@@ -256,6 +270,8 @@ export default function PlayRoundPage() {
   const [showNet, setShowNet] = useState(false);
   const [pendingPress, setPendingPress] = useState<string | null>(null);
   const [expandedMatches, setExpandedMatches] = useState<string[]>([]);
+  const [trash, setTrash] = useState<Record<string, TrashTally>>({});
+  const [isSavingTrash, setIsSavingTrash] = useState(false);
 
   function toggleMatchExpanded(matchId: string) {
     setExpandedMatches((prev) =>
@@ -319,6 +335,17 @@ export default function PlayRoundPage() {
       }
       setScores(initialScores);
 
+      // Seed the manually tallied trash (birdies come from the scorecard)
+      const initialTrash: Record<string, TrashTally> = {};
+      for (const player of data.round.players) {
+        initialTrash[player.id] = {
+          greenies: player.trash?.greenies ?? 0,
+          sandies: player.trash?.sandies ?? 0,
+          others: player.trash?.others ?? 0,
+        };
+      }
+      setTrash(initialTrash);
+
       // Find first hole without saved scores (check actual DB records, not pre-filled par)
       for (let h = 1; h <= 18; h++) {
         const allScored = data.round.players.every(
@@ -329,6 +356,66 @@ export default function PlayRoundPage() {
           break;
         }
       }
+    }
+  }
+
+  // Birdies are read off the card, so they can't drift from the scores
+  function getPlayerBirdies(playerId: string): number {
+    if (!round) return 0;
+    const player = round.players.find((p) => p.id === playerId);
+    if (!player) return 0;
+
+    return countBirdies(player.scores, round.course.holes);
+  }
+
+  function getPlayerTrashCounts(playerId: string): TrashCounts {
+    const tally = trash[playerId];
+    return {
+      birdies: getPlayerBirdies(playerId),
+      greenies: tally?.greenies ?? 0,
+      sandies: tally?.sandies ?? 0,
+      others: tally?.others ?? 0,
+    };
+  }
+
+  async function adjustTrash(
+    playerId: string,
+    category: keyof TrashTally,
+    delta: number
+  ) {
+    const current = trash[playerId] ?? { greenies: 0, sandies: 0, others: 0 };
+    const next = {
+      ...current,
+      [category]: Math.min(99, Math.max(0, current[category] + delta)),
+    };
+
+    if (next[category] === current[category]) return;
+
+    // Show it straight away, then persist
+    const updated = { ...trash, [playerId]: next };
+    setTrash(updated);
+    setIsSavingTrash(true);
+
+    try {
+      const response = await fetch(`/api/rounds/${id}/trash`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tallies: [{ roundPlayerId: playerId, ...next }],
+        }),
+      });
+
+      if (!response.ok) throw new Error("Failed to save");
+    } catch {
+      // Put it back if the save didn't land
+      setTrash(trash);
+      toast({
+        title: "Error",
+        description: "Failed to save trash",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingTrash(false);
     }
   }
 
@@ -535,6 +622,8 @@ export default function PlayRoundPage() {
   const availablePressCount = Array.from(
     pressOpportunitiesByMatch.values()
   ).reduce((sum, opportunities) => sum + opportunities.length, 0);
+  const tabCount =
+    3 + (round.ninesEnabled ? 1 : 0) + (round.trashEnabled ? 1 : 0);
 
   // Calculate 9s game state if enabled (3 or 4 players)
   const ninesState: NinesState | null = round.ninesEnabled && (round.players.length === 3 || round.players.length === 4)
@@ -591,7 +680,14 @@ export default function PlayRoundPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className={cn("grid w-full", round.ninesEnabled ? "grid-cols-4" : "grid-cols-3")}>
+        <TabsList
+          className={cn(
+            "grid w-full",
+            tabCount === 5 && "grid-cols-5",
+            tabCount === 4 && "grid-cols-4",
+            tabCount === 3 && "grid-cols-3"
+          )}
+        >
           <TabsTrigger value="hole">Hole</TabsTrigger>
           <TabsTrigger value="scorecard">Card</TabsTrigger>
           <TabsTrigger value="matches">
@@ -603,6 +699,7 @@ export default function PlayRoundPage() {
             )}
           </TabsTrigger>
           {round.ninesEnabled && <TabsTrigger value="nines">9s</TabsTrigger>}
+          {round.trashEnabled && <TabsTrigger value="trash">Trash</TabsTrigger>}
         </TabsList>
 
         {/* Single Hole Entry */}
@@ -1415,6 +1512,94 @@ export default function PlayRoundPage() {
                     </p>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+        {/* Trash — birdies come off the card, the rest are tallied by hand */}
+        {round.trashEnabled && (
+          <TabsContent value="trash" className="space-y-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Trash</CardTitle>
+                  <Badge variant="outline">${round.trashPointValue}/pt</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {round.players.map((player) => {
+                  const counts = getPlayerTrashCounts(player.id);
+                  const points = totalTrashPoints(counts);
+
+                  return (
+                    <div key={player.id} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium">
+                          {player.player.name.split(" ")[0]}
+                        </p>
+                        <Badge variant="secondary">
+                          {points} {points === 1 ? "pt" : "pts"}
+                        </Badge>
+                      </div>
+
+                      {/* Birdies are read off the scorecard, not tallied */}
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          Birdies
+                          <span className="ml-1 text-xs">(from card)</span>
+                        </span>
+                        <span className="font-bold tabular-nums w-8 text-center">
+                          {counts.birdies}
+                        </span>
+                      </div>
+
+                      {(
+                        [
+                          ["greenies", "Greenies"],
+                          ["sandies", "Sandies"],
+                          ["others", "Other"],
+                        ] as [keyof TrashTally, string][]
+                      ).map(([key, label]) => (
+                        <div
+                          key={key}
+                          className="flex items-center justify-between text-sm"
+                        >
+                          <span className="text-muted-foreground">{label}</span>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-7 w-7"
+                              disabled={isSavingTrash || counts[key] === 0}
+                              onClick={() => adjustTrash(player.id, key, -1)}
+                              aria-label={`One fewer ${label} for ${player.player.name}`}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </Button>
+                            <span className="font-bold tabular-nums w-8 text-center">
+                              {counts[key]}
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-7 w-7"
+                              disabled={isSavingTrash}
+                              onClick={() => adjustTrash(player.id, key, 1)}
+                              aria-label={`One more ${label} for ${player.player.name}`}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+
+                <p className="text-xs text-muted-foreground pt-2 border-t">
+                  One point per item. Settles on points against the group
+                  average, so the final money shows on the results page.
+                </p>
               </CardContent>
             </Card>
           </TabsContent>

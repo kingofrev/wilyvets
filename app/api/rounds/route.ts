@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { courseId, betAmount, handicapMode, autoPressAt2, ninesEnabled, ninesPointValue, players } = await request.json();
+    const { courseId, betAmount, handicapMode, autoPressAt2, ninesEnabled, ninesPointValue, trashEnabled, trashPointValue, players } = await request.json();
 
     if (!courseId || !players || players.length < 2) {
       return NextResponse.json(
@@ -75,6 +75,8 @@ export async function POST(request: NextRequest) {
         autoPressAt2: autoPressAt2 || false,
         ninesEnabled: ninesEnabled || false,
         ninesPointValue: parseFloat(ninesPointValue) || 1,
+        trashEnabled: trashEnabled || false,
+        trashPointValue: parseFloat(trashPointValue) || 1,
         status: "IN_PROGRESS",
         players: {
           create: playerCourseHandicaps.map((p: any) => {

@@ -28,6 +28,7 @@ export async function GET(
         players: {
           include: {
             player: true,
+            trash: true,
             scores: {
               orderBy: { holeNumber: "asc" },
             },
@@ -117,6 +118,7 @@ export async function DELETE(
       prisma.matchResult.deleteMany({ where: { match: { roundId: id } } }),
       prisma.match.deleteMany({ where: { roundId: id } }),
       prisma.holeScore.deleteMany({ where: { roundPlayer: { roundId: id } } }),
+      prisma.trashTally.deleteMany({ where: { roundPlayer: { roundId: id } } }),
       prisma.roundPlayer.deleteMany({ where: { roundId: id } }),
       prisma.round.delete({ where: { id } }),
     ]);

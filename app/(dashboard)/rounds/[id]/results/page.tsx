@@ -5,11 +5,24 @@ import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Trophy, ArrowRight, Check } from "lucide-react";
+import { ArrowLeft, Trophy, ArrowRight, Check, Layers } from "lucide-react";
 import Link from "next/link";
 import { cn, formatMatchStatus, formatCurrency, getStrokesOnHole, calculateCourseHandicap } from "@/lib/utils";
-import { calculateMatchState, calculateSettlement, type HoleResult } from "@/lib/games/nassau";
+import {
+  buildMatchHoleResults,
+  calculateMatchState,
+  calculateSettlement,
+  type HoleResult,
+} from "@/lib/games/nassau";
 import { calculateNinesState, calculateNinesSettlement, type NinesSettlement } from "@/lib/games/nines";
+import {
+  calculateTrashSettlement,
+  countBirdies,
+  type TrashSettlement,
+} from "@/lib/games/trash";
+import { combineNets, settleUp, type Payment, type PlayerNet } from "@/lib/games/settlement";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import type { MatchSegment } from "@prisma/client";
 
 const SEGMENT_SHORT_LABELS: Record<string, string> = {
@@ -27,6 +40,7 @@ interface RoundPlayer {
   id: string;
   handicap: string;
   player: Player;
+  trash?: { greenies: number; sandies: number; others: number } | null;
   scores: {
     holeNumber: number;
     grossStrokes: number;
@@ -76,6 +90,8 @@ interface Round {
   autoPressAt2: boolean;
   ninesEnabled: boolean;
   ninesPointValue: string;
+  trashEnabled: boolean;
+  trashPointValue: string;
   course: {
     id: string;
     name: string;
@@ -87,18 +103,74 @@ interface Round {
   matches: Match[];
 }
 
-interface Settlement {
-  fromPlayer: string;
-  toPlayer: string;
-  amount: number;
+// What one match contributed to the Nassau money, from player1's side
+interface MatchMoney {
+  matchId: string;
+  player1Name: string;
+  player2Name: string;
+  front9: number;
+  back9: number;
+  overall18: number;
+  presses: number;
+  pressCount: number;
+  player1Total: number;
+}
+
+function moneyClass(amount: number): string {
+  if (amount > 0.005) return "text-green-600";
+  if (amount < -0.005) return "text-red-600";
+  return "text-muted-foreground";
+}
+
+// Money with its direction shown, or a dash when a player came out level
+function formatSigned(amount: number): string {
+  if (Math.abs(amount) < 0.005) return "—";
+  return `${amount > 0 ? "+" : "-"}${formatCurrency(Math.abs(amount))}`;
+}
+
+function PaymentList({ payments }: { payments: Payment[] }) {
+  if (payments.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground py-2">
+        All square — nothing to settle
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {payments.map((payment, idx) => (
+        <div
+          key={idx}
+          className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+        >
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-red-600">
+              {payment.fromPlayer}
+            </span>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            <span className="font-medium text-green-600">
+              {payment.toPlayer}
+            </span>
+          </div>
+          <span className="font-bold tabular-nums">
+            {formatCurrency(payment.amount)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function RoundResultsPage() {
   const params = useParams();
   const id = params.id as string;
   const [round, setRound] = useState<Round | null>(null);
-  const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const [nassauNets, setNassauNets] = useState<PlayerNet[]>([]);
+  const [matchMoney, setMatchMoney] = useState<MatchMoney[]>([]);
   const [ninesSettlements, setNinesSettlements] = useState<NinesSettlement[]>([]);
+  const [trashSettlements, setTrashSettlements] = useState<TrashSettlement[]>([]);
+  const [combineAll, setCombineAll] = useState(false);
 
   useEffect(() => {
     fetchRound();
@@ -112,6 +184,9 @@ export default function RoundResultsPage() {
       calculateSettlements(data.round);
       if (data.round.ninesEnabled && (data.round.players.length === 3 || data.round.players.length === 4)) {
         calculateNines(data.round);
+      }
+      if (data.round.trashEnabled) {
+        calculateTrash(data.round);
       }
     }
   }
@@ -174,45 +249,50 @@ export default function RoundResultsPage() {
     setNinesSettlements(settlements);
   }
 
+  function calculateTrash(roundData: Round) {
+    const pointValue = parseFloat(roundData.trashPointValue) || 0;
+
+    setTrashSettlements(
+      calculateTrashSettlement(
+        roundData.players.map((player) => ({
+          playerId: player.id,
+          playerName: player.player.name,
+          counts: {
+            birdies: countBirdies(player.scores, roundData.course.holes),
+            greenies: player.trash?.greenies ?? 0,
+            sandies: player.trash?.sandies ?? 0,
+            others: player.trash?.others ?? 0,
+          },
+        })),
+        pointValue
+      )
+    );
+  }
+
   function calculateSettlements(roundData: Round) {
     const betAmount = parseFloat(roundData.betAmount);
     const playerTotals: Record<string, number> = {};
+    const perMatch: MatchMoney[] = [];
 
-    // Initialize player totals
     for (const player of roundData.players) {
       playerTotals[player.id] = 0;
     }
 
-    // Calculate for each match
     for (const match of roundData.matches) {
-      // Build hole results for this match
-      const holeResults: HoleResult[] = [];
-      const p1Scores = match.player1.scores || [];
-      const p2Scores = match.player2.scores || [];
-
-      for (let holeNum = 1; holeNum <= 18; holeNum++) {
-        const p1Score = p1Scores.find((s) => s.holeNumber === holeNum);
-        const p2Score = p2Scores.find((s) => s.holeNumber === holeNum);
-
-        if (p1Score && p2Score) {
-          const hole = roundData.course.holes.find((h) => h.holeNumber === holeNum);
-          if (!hole) continue;
-
-          const p1Net = p1Score.netStrokes;
-          const p2Net = p2Score.netStrokes;
-
-          holeResults.push({
-            holeNumber: holeNum,
-            player1Gross: p1Score.grossStrokes,
-            player2Gross: p2Score.grossStrokes,
-            player1Net: p1Net,
-            player2Net: p2Net,
-            player1StrokesReceived: p1Score.strokesReceived,
-            player2StrokesReceived: p2Score.strokesReceived,
-            winner: p1Net < p2Net ? "player1" : p1Net > p2Net ? "player2" : "tie",
-          });
+      const holeResults: HoleResult[] = buildMatchHoleResults(
+        roundData.course.holes,
+        roundData.handicapMode === "MATCH_LOWEST"
+          ? "MATCH_LOWEST"
+          : "GROUP_LOWEST",
+        {
+          courseHandicap: getPlayerCourseHandicap(roundData, match.player1.id),
+          scores: match.player1.scores || [],
+        },
+        {
+          courseHandicap: getPlayerCourseHandicap(roundData, match.player2.id),
+          scores: match.player2.scores || [],
         }
-      }
+      );
 
       const matchState = calculateMatchState(
         holeResults,
@@ -236,43 +316,41 @@ export default function RoundResultsPage() {
         match.player2.id
       );
 
-      if (settlement) {
-        playerTotals[settlement.toPlayerId] += settlement.amount;
-        playerTotals[settlement.fromPlayerId] -= settlement.amount;
-      }
+      // calculateSettlement reports the breakdown from player1's side, and
+      // returns nothing at all when the match is level
+      const breakdown = settlement?.breakdown ?? {
+        front9: 0,
+        back9: 0,
+        overall18: 0,
+        presses: 0,
+      };
+      const player1Total =
+        breakdown.front9 +
+        breakdown.back9 +
+        breakdown.overall18 +
+        breakdown.presses;
+
+      perMatch.push({
+        matchId: match.id,
+        player1Name: match.player1.player.name,
+        player2Name: match.player2.player.name,
+        ...breakdown,
+        pressCount: matchState.presses.filter((press) => press.isComplete).length,
+        player1Total,
+      });
+
+      playerTotals[match.player1.id] += player1Total;
+      playerTotals[match.player2.id] -= player1Total;
     }
 
-    // Convert to settlements list (who pays whom)
-    const finalSettlements: Settlement[] = [];
-    const sortedPlayers = roundData.players
-      .map((p) => ({ ...p, total: playerTotals[p.id] }))
-      .sort((a, b) => a.total - b.total); // Losers first
-
-    // Simple settlement: losers pay winners
-    for (let i = 0; i < sortedPlayers.length; i++) {
-      const player = sortedPlayers[i];
-      if (player.total < 0) {
-        // This player owes money
-        let remaining = Math.abs(player.total);
-        for (let j = sortedPlayers.length - 1; j >= 0 && remaining > 0; j--) {
-          const winner = sortedPlayers[j];
-          if (winner.total > 0) {
-            const amount = Math.min(remaining, winner.total);
-            if (amount > 0) {
-              finalSettlements.push({
-                fromPlayer: player.player.name,
-                toPlayer: winner.player.name,
-                amount,
-              });
-              remaining -= amount;
-              sortedPlayers[j].total -= amount;
-            }
-          }
-        }
-      }
-    }
-
-    setSettlements(finalSettlements);
+    setMatchMoney(perMatch);
+    setNassauNets(
+      roundData.players.map((player) => ({
+        playerId: player.id,
+        playerName: player.player.name,
+        amount: Math.round(playerTotals[player.id] * 100) / 100,
+      }))
+    );
   }
 
   if (!round) {
@@ -282,6 +360,48 @@ export default function RoundResultsPage() {
       </div>
     );
   }
+
+  // Each bet that actually ran, as per-player net amounts
+  const activeBets: {
+    label: string;
+    description: string;
+    nets: PlayerNet[];
+  }[] = [
+    {
+      label: "Nassau",
+      description: `${round.betAmount} a side`,
+      nets: nassauNets,
+    },
+  ];
+
+  if (round.ninesEnabled && ninesSettlements.length > 0) {
+    activeBets.push({
+      label: "9s",
+      description: `${round.ninesPointValue} a point`,
+      nets: ninesSettlements.map((settlement) => ({
+        playerId: settlement.playerId,
+        playerName: settlement.playerName,
+        amount: settlement.amount,
+      })),
+    });
+  }
+
+  if (round.trashEnabled && trashSettlements.length > 0) {
+    activeBets.push({
+      label: "Trash",
+      description: `${round.trashPointValue} a point`,
+      nets: trashSettlements.map((settlement) => ({
+        playerId: settlement.playerId,
+        playerName: settlement.playerName,
+        amount: settlement.amount,
+      })),
+    });
+  }
+
+  const combinedNets = combineNets(...activeBets.map((bet) => bet.nets));
+  const betSummary =
+    activeBets.map((bet) => bet.label).join(" · ") +
+    (round.autoPressAt2 ? " · auto-press" : "");
 
   return (
     <div className="space-y-6 pb-20">
@@ -298,42 +418,102 @@ export default function RoundResultsPage() {
         </div>
       </div>
 
-      {/* Settlement Summary */}
+      {/* Settle up — each bet on its own, or all of them at once */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-yellow-500" />
             Settlements
           </CardTitle>
-          <CardDescription>
-            ${round.betAmount} Nassau
-            {round.autoPressAt2 && " with auto-press"}
-          </CardDescription>
+          <CardDescription>{betSummary}</CardDescription>
+          {activeBets.length > 1 && (
+            <div className="flex items-center justify-between pt-2">
+              <Label
+                htmlFor="combine-bets"
+                className="flex items-center gap-1.5 cursor-pointer"
+              >
+                <Layers className="h-4 w-4" />
+                Combine all bets and settle
+              </Label>
+              <Switch
+                id="combine-bets"
+                checked={combineAll}
+                onCheckedChange={setCombineAll}
+              />
+            </div>
+          )}
         </CardHeader>
-        <CardContent>
-          {settlements.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">
-              No settlements - all matches are tied or incomplete
-            </p>
+        <CardContent className="space-y-4">
+          {combineAll ? (
+            <>
+              {/* Where each player's combined number came from */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-xs text-muted-foreground">
+                      <th className="text-left font-normal pb-1">Player</th>
+                      {activeBets.map((bet) => (
+                        <th
+                          key={bet.label}
+                          className="text-right font-normal pb-1 px-2"
+                        >
+                          {bet.label}
+                        </th>
+                      ))}
+                      <th className="text-right font-normal pb-1">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {combinedNets
+                      .slice()
+                      .sort((a, b) => b.amount - a.amount)
+                      .map((net) => (
+                        <tr key={net.playerId} className="border-b last:border-0">
+                          <td className="py-1.5 font-medium">
+                            {net.playerName.split(" ")[0]}
+                          </td>
+                          {activeBets.map((bet) => {
+                            const amount =
+                              bet.nets.find((n) => n.playerId === net.playerId)
+                                ?.amount ?? 0;
+                            return (
+                              <td
+                                key={bet.label}
+                                className={cn(
+                                  "py-1.5 text-right tabular-nums px-2",
+                                  moneyClass(amount)
+                                )}
+                              >
+                                {formatSigned(amount)}
+                              </td>
+                            );
+                          })}
+                          <td
+                            className={cn(
+                              "py-1.5 text-right font-bold tabular-nums",
+                              moneyClass(net.amount)
+                            )}
+                          >
+                            {formatSigned(net.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              <PaymentList payments={settleUp(combinedNets)} />
+            </>
           ) : (
-            <div className="space-y-3">
-              {settlements.map((settlement, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-red-600">
-                      {settlement.fromPlayer}
-                    </span>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium text-green-600">
-                      {settlement.toPlayer}
-                    </span>
+            <div className="space-y-4">
+              {activeBets.map((bet) => (
+                <div key={bet.label} className="space-y-2">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="text-sm font-medium">{bet.label}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {bet.description}
+                    </p>
                   </div>
-                  <span className="font-bold">
-                    {formatCurrency(settlement.amount)}
-                  </span>
+                  <PaymentList payments={settleUp(bet.nets)} />
                 </div>
               ))}
             </div>
@@ -341,20 +521,17 @@ export default function RoundResultsPage() {
         </CardContent>
       </Card>
 
-      {/* 9s Game Settlement */}
+      {/* 9s detail */}
       {round.ninesEnabled && ninesSettlements.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              9s Game Results
-            </CardTitle>
-            <CardDescription>
-              ${round.ninesPointValue} per point
-            </CardDescription>
+            <CardTitle className="text-base">9s Game</CardTitle>
+            <CardDescription>${round.ninesPointValue} per point</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {ninesSettlements
+                .slice()
                 .sort((a, b) => b.amount - a.amount)
                 .map((settlement) => (
                   <div
@@ -362,20 +539,22 @@ export default function RoundResultsPage() {
                     className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
                   >
                     <div>
-                      <span className="font-medium">{settlement.playerName}</span>
+                      <span className="font-medium">
+                        {settlement.playerName}
+                      </span>
                       <p className="text-sm text-muted-foreground">
-                        {settlement.totalPoints} points (net: {settlement.netPoints >= 0 ? "+" : ""}{settlement.netPoints.toFixed(1)})
+                        {settlement.totalPoints} points (net{" "}
+                        {settlement.netPoints >= 0 ? "+" : ""}
+                        {settlement.netPoints.toFixed(1)})
                       </p>
                     </div>
                     <span
                       className={cn(
-                        "font-bold",
-                        settlement.amount > 0 && "text-green-600",
-                        settlement.amount < 0 && "text-red-600"
+                        "font-bold tabular-nums",
+                        moneyClass(settlement.amount)
                       )}
                     >
-                      {settlement.amount >= 0 ? "+" : ""}{formatCurrency(Math.abs(settlement.amount))}
-                      {settlement.amount < 0 && " owes"}
+                      {formatSigned(settlement.amount)}
                     </span>
                   </div>
                 ))}
@@ -384,15 +563,88 @@ export default function RoundResultsPage() {
         </Card>
       )}
 
+      {/* Trash detail */}
+      {round.trashEnabled && trashSettlements.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Trash</CardTitle>
+            <CardDescription>
+              ${round.trashPointValue} per point · birdies counted from the card
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-xs text-muted-foreground">
+                  <th className="text-left font-normal pb-1">Player</th>
+                  <th className="text-right font-normal pb-1 px-1">Bird</th>
+                  <th className="text-right font-normal pb-1 px-1">Green</th>
+                  <th className="text-right font-normal pb-1 px-1">Sand</th>
+                  <th className="text-right font-normal pb-1 px-1">Other</th>
+                  <th className="text-right font-normal pb-1 px-1">Pts</th>
+                  <th className="text-right font-normal pb-1">$</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trashSettlements
+                  .slice()
+                  .sort((a, b) => b.amount - a.amount)
+                  .map((settlement) => (
+                    <tr
+                      key={settlement.playerId}
+                      className="border-b last:border-0"
+                    >
+                      <td className="py-1.5 font-medium">
+                        {settlement.playerName.split(" ")[0]}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums px-1">
+                        {settlement.counts.birdies}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums px-1">
+                        {settlement.counts.greenies}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums px-1">
+                        {settlement.counts.sandies}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums px-1">
+                        {settlement.counts.others}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums px-1 font-medium">
+                        {settlement.totalPoints}
+                      </td>
+                      <td
+                        className={cn(
+                          "py-1.5 text-right font-bold tabular-nums",
+                          moneyClass(settlement.amount)
+                        )}
+                      >
+                        {formatSigned(settlement.amount)}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Match Details */}
       <div className="space-y-3">
         <h3 className="font-semibold">Match Details</h3>
+        <p className="text-sm text-muted-foreground -mt-2">
+          Amounts are from the first-named player&apos;s side
+        </p>
         {round.matches.map((match) => {
           const front9 = match.results.find((r) => r.segment === "FRONT_9");
           const back9 = match.results.find((r) => r.segment === "BACK_9");
           const overall = match.results.find((r) => r.segment === "OVERALL_18");
+          const money = matchMoney.find((m) => m.matchId === match.id);
 
-          const formatResult = (result: MatchResult | undefined, label: string) => {
+          const formatResult = (
+            result: MatchResult | undefined,
+            label: string,
+            amount: number
+          ) => {
             if (!result) return null;
             const status = result.player1Status;
             const remaining = result.holesRemaining;
@@ -418,15 +670,25 @@ export default function RoundResultsPage() {
                     <p className="font-medium text-sm">{winner}</p>
                   )}
                 </div>
-                <Badge
-                  variant={winner ? "default" : "secondary"}
-                  className={cn(
-                    winner && status > 0 && "bg-green-600",
-                    winner && status < 0 && "bg-red-600"
-                  )}
-                >
-                  {displayText}
-                </Badge>
+                <div className="flex items-center gap-3">
+                  <Badge
+                    variant={winner ? "default" : "secondary"}
+                    className={cn(
+                      winner && status > 0 && "bg-green-600",
+                      winner && status < 0 && "bg-red-600"
+                    )}
+                  >
+                    {displayText}
+                  </Badge>
+                  <span
+                    className={cn(
+                      "text-sm font-bold tabular-nums w-16 text-right",
+                      moneyClass(amount)
+                    )}
+                  >
+                    {formatSigned(amount)}
+                  </span>
+                </div>
               </div>
             );
           };
@@ -446,13 +708,26 @@ export default function RoundResultsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-0">
-                {formatResult(front9, "Front 9")}
-                {formatResult(back9, "Back 9")}
-                {formatResult(overall, "Overall 18")}
+                {formatResult(front9, "Front 9", money?.front9 ?? 0)}
+                {formatResult(back9, "Back 9", money?.back9 ?? 0)}
+                {formatResult(overall, "Overall 18", money?.overall18 ?? 0)}
 
                 {match.presses.length > 0 && (
                   <div className="pt-2 mt-2 border-t">
-                    <p className="text-xs text-muted-foreground mb-2">Presses</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-muted-foreground">
+                        Presses
+                        {!!money?.pressCount && ` (${money.pressCount} settled)`}
+                      </p>
+                      <span
+                        className={cn(
+                          "text-sm font-bold tabular-nums",
+                          moneyClass(money?.presses ?? 0)
+                        )}
+                      >
+                        {formatSigned(money?.presses ?? 0)}
+                      </span>
+                    </div>
                     {match.presses.map((press, idx) => {
                       const winner = press.player1Status > 0
                         ? match.player1.player.name
@@ -481,6 +756,26 @@ export default function RoundResultsPage() {
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {/* What this match contributed to the Nassau money */}
+                {money && (
+                  <div className="flex items-center justify-between pt-2 mt-2 border-t">
+                    <span className="text-sm font-medium">
+                      {Math.abs(money.player1Total) < 0.005
+                        ? "Match all square"
+                        : `${
+                            money.player1Total > 0
+                              ? match.player1.player.name.split(" ")[0]
+                              : match.player2.player.name.split(" ")[0]
+                          } collects`}
+                    </span>
+                    <span className="font-bold tabular-nums">
+                      {Math.abs(money.player1Total) < 0.005
+                        ? "—"
+                        : formatCurrency(Math.abs(money.player1Total))}
+                    </span>
                   </div>
                 )}
               </CardContent>

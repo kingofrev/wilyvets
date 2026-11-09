@@ -47,6 +47,8 @@ export default function NewRoundPage() {
   const [autoPressAt2, setAutoPressAt2] = useState(false);
   const [ninesEnabled, setNinesEnabled] = useState(false);
   const [ninesPointValue, setNinesPointValue] = useState("1");
+  const [trashEnabled, setTrashEnabled] = useState(false);
+  const [trashPointValue, setTrashPointValue] = useState("1");
 
   useEffect(() => {
     Promise.all([
@@ -107,6 +109,8 @@ export default function NewRoundPage() {
           autoPressAt2,
           ninesEnabled: (selectedPlayers.length === 3 || selectedPlayers.length === 4) ? ninesEnabled : false,
           ninesPointValue: ninesPointValue,
+          trashEnabled,
+          trashPointValue,
           players: selectedPlayers,
         }),
       });
@@ -353,6 +357,42 @@ export default function NewRoundPage() {
           )}
         </Card>
       )}
+
+      {/* Trash — birdies, greenies, sandies, other */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>Trash</span>
+            <Switch checked={trashEnabled} onCheckedChange={setTrashEnabled} />
+          </CardTitle>
+          <CardDescription>
+            Birdies, greenies, sandies and other side bets, one point each
+          </CardDescription>
+        </CardHeader>
+        {trashEnabled && (
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Point Value</Label>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  step="0.25"
+                  value={trashPointValue}
+                  onChange={(e) => setTrashPointValue(e.target.value)}
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">per point</span>
+              </div>
+            </div>
+            <div className="text-sm text-muted-foreground space-y-1">
+              <p>• Birdies counted from the scorecard automatically</p>
+              <p>• Greenies, sandies and other tallied during the round</p>
+              <p>• Settles on points against the group average, like 9s</p>
+            </div>
+          </CardContent>
+        )}
+      </Card>
 
       {/* Start Button */}
       <Button
